@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/theme/app_theme.dart';
-
-
 import 'features/splash/splash_screen.dart';
 
 void main() {
@@ -30,9 +28,12 @@ class RxSwiftApp extends StatelessWidget {
     return MaterialApp(
       title: 'RxSwift Calgary',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      themeMode: ThemeMode.light,
-      home: const SplashScreen(), // ← starts here, auto-navigates to Login
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0AA99B)),
+        useMaterial3: true,
+        fontFamily: 'Poppins',
+      ),
+      home: const SplashScreen(),
     );
   }
 }

@@ -8,12 +8,14 @@ enum LoginStatus { idle, loading, success, error }
 
 class LoginState {
   const LoginState({
-    this.phoneNumber = '',
+    this.username = '',
+    this.password = '',
     this.status = LoginStatus.idle,
     this.errorMessage,
   });
 
-  final String phoneNumber;
+  final String username;
+  final String password;
   final LoginStatus status;
   final String? errorMessage;
 
@@ -21,55 +23,85 @@ class LoginState {
   bool get hasError => status == LoginStatus.error;
   bool get isSuccess => status == LoginStatus.success;
 
-  /// Basic validation: must have at least 10 digits (stripped of spaces/dashes)
-  bool get isPhoneValid {
-    final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
-    return digits.length >= 10;
-  }
+  bool get isValid =>
+      username.trim().isNotEmpty && password.isNotEmpty;
 
   LoginState copyWith({
-    String? phoneNumber,
+    String? username,
+    String? password,
     LoginStatus? status,
     String? errorMessage,
   }) {
     return LoginState(
-      phoneNumber: phoneNumber ?? this.phoneNumber,
+      username: username ?? this.username,
+      password: password ?? this.password,
       status: status ?? this.status,
       errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Login Notifier
+// ─────────────────────────────────────────────────────────────
 
 class LoginNotifier extends StateNotifier<LoginState> {
   LoginNotifier() : super(const LoginState());
 
-  void onPhoneChanged(String value) {
+  void onUsernameChanged(String value) {
     state = state.copyWith(
-      phoneNumber: value,
+      username: value,
       status: LoginStatus.idle,
       errorMessage: null,
     );
   }
 
-  Future<void> sendOtp() async {
-    if (!state.isPhoneValid) {
+  void onPasswordChanged(String value) {
+    state = state.copyWith(
+      password: value,
+      status: LoginStatus.idle,
+      errorMessage: null,
+    );
+  }
+
+  Future<void> login() async {
+    if (state.username.trim().isEmpty) {
       state = state.copyWith(
         status: LoginStatus.error,
-        errorMessage: 'Please enter a valid phone number.',
+        errorMessage: 'Please enter your username.',
+      );
+      return;
+    }
+    if (state.password.isEmpty) {
+      state = state.copyWith(
+        status: LoginStatus.error,
+        errorMessage: 'Please enter your password.',
       );
       return;
     }
 
     state = state.copyWith(status: LoginStatus.loading);
-    await Future.delayed(const Duration(seconds: 2));
-    state = state.copyWith(status: LoginStatus.success);
+
+    try {
+      await Future.delayed(const Duration(seconds: 2));
+
+      state = state.copyWith(status: LoginStatus.success);
+    } catch (e) {
+      state = state.copyWith(
+        status: LoginStatus.error,
+        errorMessage: 'Invalid username or password.',
+      );
+    }
   }
 
   void reset() {
     state = const LoginState();
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Provider
+// ─────────────────────────────────────────────────────────────
 
 final loginProvider =
 StateNotifierProvider.autoDispose<LoginNotifier, LoginState>(

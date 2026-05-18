@@ -52,6 +52,17 @@ class AppColors {
   static const surface     = Color(0xFFFFFFFF);
   static const border      = Color(0xFFEAECEF);
   static const textStrong  = Color(0xFF111827);
+
+  /// Rx logo dark background
+  static const logoBg = Color(0xFF1A1A2E);
+  /// Dark navy for headings
+  static const textDark = Color(0xFF1A1A2E);
+
+  /// "Swift" label green in logo
+  static const logoAccent = Color(0xFF2E7D4F);
+
+  /// Muted grey for sub-headings / hints
+  static const textMuted = Color(0xFF8A8FA8);
 }
 
 class AppSpacing {

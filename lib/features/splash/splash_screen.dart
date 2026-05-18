@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:rxswift/main.dart';
 
-import '../../core/widgets/rxswift_logo.dart';
+import '../../widgets/rxswift_logo.dart';
 import '../auth/login_screen.dart';
 
 
@@ -156,10 +157,9 @@ class _SplashScreenState extends State<SplashScreen>
                   scale: _logoScale,
                   child: FadeTransition(
                     opacity: _logoFade,
-                    child: RxSwiftLogo(size: screenH * 0.22),
+                    child: RxSwiftLogo(),
                   ),
                 ),
-
                 SizedBox(height: screenH * 0.036),
 
                 // ── Wordmark ────────────────────────────────
@@ -167,11 +167,7 @@ class _SplashScreenState extends State<SplashScreen>
                   position: _wordmarkSlide,
                   child: FadeTransition(
                     opacity: _wordmarkFade,
-                    child: RxSwiftLogo(
-                      size: 0, // icon hidden; wordmark only
-                      showWordmark: true,
-                      wordmarkFontSize: screenH * 0.052,
-                    ),
+                    child:   const RxSwiftLogo(),
                   ),
                 ),
 
