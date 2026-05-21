@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/theme/app_theme.dart';
+import 'features/delivery_confirm/delivery_confirm_screen.dart';
 import 'features/splash/splash_screen.dart';
 
 void main() {
@@ -33,7 +34,7 @@ class RxSwiftApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Poppins',
       ),
-      home: const SplashScreen(),
+      home: const DeliveryConfirmationScreen(),
     );
   }
 }

@@ -10,13 +10,14 @@ class AppColors {
   AppColors._();
 
   // ── Brand ──────────────────────────────────────────────────
-  static const Color primary = Color(0xFF1A3A8F);       // deep green (CTA button)
-  static const Color teal  = Color(0xFF00A3A3);
-  static const Color tealLight  = Color(0xFF00C2CC);
-  static const Color primaryLight = Color(0xFF43A047);  // lighter green hover/focus
-  static const Color primaryDark = Color(0xFF1B5E20);   // pressed state
-  static const Color accent = Color(0xFF66BB6A);        // soft green
-
+  static const Color primary = Color(0xFF1A3A8F);
+  static const Color teal = Color(0xFF00A3A3);
+  static const Color tealLight = Color(0xFF00C2CC);
+  static const Color primaryLight = Color(0xFF43A047);
+  static const Color primaryDark = Color(0xFF1B5E20);
+  static const Color accent = Color(0xFF66BB6A);
+  static const Color accentGreen = Color(0xFF2E9E6B);
+  static const Color accentGreenDark = Color(0xFF1F7E54);
 
   // ── Text ───────────────────────────────────────────────────
   static const Color textPrimary = Color(0xFF1A1A1A);
@@ -34,35 +35,57 @@ class AppColors {
   static const Color disabled = Color(0xFFB0BFB0);
   static const Color disabledBg = Color(0xFFE8EDE8);
 
-  // Brand
-  static const navy      = Color(0xFF0D1B2A);
-  static const navyMid   = Color(0xFF1A2E42);
-  static const navyLight = Color(0xFF243D56);
-  static const green     = Color(0xFF1B8A5A);
-  static const greenLight= Color(0xFF22A86E);
-  static const greenPale = Color(0xFFE8F7F1);
+  // ── Brand Extra ────────────────────────────────────────────
+  static const Color navy = Color(0xFF0D1B2A);
+  static const Color navyMid = Color(0xFF1A2E42);
+  static const Color navyLight = Color(0xFF243D56);
 
-  // Semantic
-  static const infoPale   = Color(0xFFEBF4FF);
-  static const warningPale= Color(0xFFFEF3C7);
-  static const errorPale  = Color(0xFFFDECEA);
+  static const Color green = Color(0xFF1B8A5A);
+  static const Color greenLight = Color(0xFF22A86E);
+  static const Color greenPale = Color(0xFFE8F7F1);
 
-  // Neutral
-  static const background  = Color(0xFFF8F9FA);
-  static const surface     = Color(0xFFFFFFFF);
-  static const border      = Color(0xFFEAECEF);
-  static const textStrong  = Color(0xFF111827);
+  // ── Semantic ───────────────────────────────────────────────
+  static const Color infoPale = Color(0xFFEBF4FF);
+  static const Color warningPale = Color(0xFFFEF3C7);
+  static const Color errorPale = Color(0xFFFDECEA);
 
-  /// Rx logo dark background
-  static const logoBg = Color(0xFF1A1A2E);
-  /// Dark navy for headings
-  static const textDark = Color(0xFF1A1A2E);
+  // ── Neutral ────────────────────────────────────────────────
+  static const Color background = Color(0xFFF8F9FA);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color border = Color(0xFFEAECEF);
+  static const Color textStrong = Color(0xFF111827);
 
-  /// "Swift" label green in logo
-  static const logoAccent = Color(0xFF2E7D4F);
+  // ── Logo ───────────────────────────────────────────────────
+  static const Color logoBg = Color(0xFF1A1A2E);
+  static const Color textDark = Color(0xFF1A1A2E);
+  static const Color logoAccent = Color(0xFF2E7D4F);
+  static const Color textMuted = Color(0xFF8A8FA8);
 
-  /// Muted grey for sub-headings / hints
-  static const textMuted = Color(0xFF8A8FA8);
+  // ── Navigation Screen ──────────────────────────────────────
+  static const Color mapRouteBlue = Color(0xFF2979FF);
+  static const Color mapOverlayBg = Color(0xFFE4EFE4);
+
+  // ── Success / Delivery ─────────────────────────────────────
+  static const Color successBg = Color(0xFFE6F4EA);
+  static const Color successDark = Color(0xFF2E7D32);
+
+  // ── Danger ─────────────────────────────────────────────────
+  static const Color danger = Color(0xFFD32F2F);
+
+  // ── Shadows ────────────────────────────────────────────────
+  static const Color shadowLight = Color(0x22000000);
+
+  // ── Map Theme ──────────────────────────────────────────────
+  static const Color mapLandscape = Color(0xFFDDE8D8);
+  static const Color mapWater = Color(0xFFB3D4E8);
+  static const Color mapHighway = Color(0xFFF5E6B2);
+  static const Color mapRoad = Color(0xFFFFFFFF);
+  static const Color mapNeighborhoodText = Color(0xFF777777);
+
+  static const Color infoBg = Color(0xFFEAF3FC);
+  static const Color cardBorder = Color(0xFFE7EDF3);
+  static const Color errorBg = Color(0xFFFCEBEA);
+  static const Color warningBg = Color(0xFFFCF4DE);
 }
 
 class AppSpacing {
@@ -85,6 +108,11 @@ class AppRadius {
   static const double lg = 16.0;
   static const double xl = 24.0;
   static const double full = 100.0;
+
+  static const double card = 16.0;
+  static const double button = 14.0;
+  static const double pill = 999.0;
+
 }
 
 class AppTheme {

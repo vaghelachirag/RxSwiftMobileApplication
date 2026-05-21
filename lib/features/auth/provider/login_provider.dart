@@ -65,6 +65,7 @@ class LoginNotifier extends StateNotifier<LoginState> {
   }
 
   Future<void> login() async {
+
     if (state.username.trim().isEmpty) {
       state = state.copyWith(
         status: LoginStatus.error,

@@ -7,7 +7,13 @@ import '../../model/route_model.dart';
 import '../../theme/app_theme.dart';
 import '../navigation/navigation_screen.dart';
 
-
+// ─────────────────────────────────────────────────────────────
+//  Today Route Screen  (Figma redesign)
+//  - Vertical numbered timeline
+//  - Clean white cards with soft shadow
+//  - Plain subheader text  ("4 Stops · 10:00 PM Pickup")
+//  - Solid blue Start Route button
+// ─────────────────────────────────────────────────────────────
 
 class TodayRouteScreen extends ConsumerWidget {
   const TodayRouteScreen({super.key});
@@ -15,23 +21,56 @@ class TodayRouteScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(todayRouteProvider);
+    final notifier = ref.read(todayRouteProvider.notifier);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: _RouteAppBar(),
-        body: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 350),
-          child: state.isLoading
-              ? const _LoadingView()
-              : state.isLoaded
-              ? _RouteBody(state: state)
-              : const _LoadingView(),
+        body: SafeArea(
+          top: false,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            child: state.isLoading
+                ? const _LoadingView()
+                : state.isLoaded
+                ? _RouteBody(state: state)
+                : const _LoadingView(),
+          ),
         ),
+        bottomNavigationBar: state.isLoaded
+            ? _BottomBar(
+          state: state,
+          onStart: () async {
+            await notifier.startRoute();
+            if (context.mounted) {
+              Navigator.of(context).push(
+                PageRouteBuilder(
+                  pageBuilder: (_, __, ___) =>
+                  const NavigationMapScreen(),
+                  transitionsBuilder: (_, anim, __, child) =>
+                      FadeTransition(opacity: anim, child: child),
+                  transitionDuration:
+                  const Duration(milliseconds: 400),
+                ),
+              );
+            }
+          },
+        )
+            : null,
       ),
     );
   }
+}
+
+// Keep this alias so any existing navigation pointing at
+// `TodayRouteScaffold` continues to work.
+class TodayRouteScaffold extends StatelessWidget {
+  const TodayRouteScaffold({super.key});
+
+  @override
+  Widget build(BuildContext context) => const TodayRouteScreen();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -47,26 +86,23 @@ class _RouteAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       backgroundColor: AppColors.background,
       elevation: 0,
+      scrolledUnderElevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-        color: AppColors.primary,
+        color: AppColors.textPrimary,
         onPressed: () => Navigator.of(context).maybePop(),
       ),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Today's Route",
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
+      title: const Text(
+        "Today's Route",
+        style: TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
+        ),
       ),
       titleSpacing: 0,
+      centerTitle: false,
     );
   }
 }
@@ -80,9 +116,9 @@ class _LoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return const Center(
       child: CircularProgressIndicator(
-        valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+        valueColor: AlwaysStoppedAnimation(AppColors.primary),
         strokeWidth: 2.5,
       ),
     );
@@ -102,27 +138,26 @@ class _RouteBody extends ConsumerWidget {
     final route = state.route!;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Sub-header ────────────────────────────────────────
-        _SubHeader(route: route, completedStops: state.completedStops),
+        _SubHeader(route: route),
 
-        // ── Progress bar (shown when route is active) ─────────
-        if (state.isRouteActive)
-          _ProgressBar(
-            completed: state.completedStops,
-            total: route.totalStops,
-          ),
+        const SizedBox(height: 8),
 
-        // ── Stops list ────────────────────────────────────────
+        // ── Timeline list ─────────────────────────────────────
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             itemCount: route.stops.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final stop = route.stops[index];
-              return _StopCard(
+              final isFirst = index == 0;
+              final isLast = index == route.stops.length - 1;
+              return _TimelineStop(
                 stop: stop,
+                isFirst: isFirst,
+                isLast: isLast,
                 isRouteActive: state.isRouteActive,
                 onMarkDone: () => ref
                     .read(todayRouteProvider.notifier)
@@ -137,162 +172,50 @@ class _RouteBody extends ConsumerWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Sub-header  "4 Stops • 10:00 PM Pickup"
+//  Sub-header  "4 Stops · 10:00 PM Pickup"
 // ─────────────────────────────────────────────────────────────
 
 class _SubHeader extends StatelessWidget {
-  const _SubHeader({required this.route, required this.completedStops});
+  const _SubHeader({required this.route});
   final TodayRoute route;
-  final int completedStops;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        border: Border(
-          bottom: BorderSide(color: AppColors.border, width: 1),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+      child: Text(
+        '${route.totalStops} Stops · ${route.pickupTime} Pickup',
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textSecondary,
         ),
       ),
-      child: Row(
-        children: [
-          _Chip(
-            icon: Icons.location_on_rounded,
-            label: '${route.totalStops} Stops',
-            color: AppColors.primary,
-          ),
-          const SizedBox(width: 10),
-          _Chip(
-            icon: Icons.access_time_rounded,
-            label: '${route.pickupTime} Pickup',
-            color: AppColors.teal,
-          ),
-          if (completedStops > 0) ...[
-            const SizedBox(width: 10),
-            _Chip(
-              icon: Icons.check_circle_outline_rounded,
-              label: '$completedStops/${route.totalStops} Done',
-              color: AppColors.success,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(AppRadius.full),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Progress bar
+//  Timeline Stop  (number bubble + connector line + card)
 // ─────────────────────────────────────────────────────────────
 
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({required this.completed, required this.total});
-  final int completed;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = total > 0 ? completed / total : 0.0;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Route Progress',
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              Text(
-                '$completed of $total stops',
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.full),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: AppColors.border,
-              valueColor: AlwaysStoppedAnimation(AppColors.teal),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Stop Card
-// ─────────────────────────────────────────────────────────────
-
-class _StopCard extends StatelessWidget {
-  const _StopCard({
+class _TimelineStop extends StatelessWidget {
+  const _TimelineStop({
     required this.stop,
+    required this.isFirst,
+    required this.isLast,
     required this.isRouteActive,
     required this.onMarkDone,
   });
 
   final RouteStop stop;
+  final bool isFirst;
+  final bool isLast;
   final bool isRouteActive;
   final VoidCallback onMarkDone;
 
-  Color get _numberColor {
+  Color get _bubbleColor {
     switch (stop.status) {
       case StopStatus.completed:
         return AppColors.success;
@@ -301,7 +224,8 @@ class _StopCard extends StatelessWidget {
       case StopStatus.skipped:
         return AppColors.textSecondary;
       case StopStatus.pending:
-        return AppColors.primary;
+      // Figma uses green for the numbered bubbles
+        return AppColors.success;
     }
   }
 
@@ -310,148 +234,230 @@ class _StopCard extends StatelessWidget {
     final isCompleted = stop.status == StopStatus.completed;
     final isInProgress = stop.status == StopStatus.inProgress;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        color: isInProgress
-            ? AppColors.primary.withOpacity(0.04)
-            : AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(
-          color: isInProgress
-              ? AppColors.teal.withOpacity(0.45)
-              : isCompleted
-              ? AppColors.success.withOpacity(0.30)
-              : AppColors.border,
-          width: isInProgress ? 1.5 : 1.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Stop number bubble ──────────────────────────
-            _NumberBubble(
-              number: stop.stopNumber,
-              color: _numberColor,
-              isCompleted: isCompleted,
-            ),
-
-            const SizedBox(width: 14),
-
-            // ── Patient info ────────────────────────────────
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    stop.patientName,
-                    style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: isCompleted
-                          ? AppColors.textSecondary
-                          : AppColors.textPrimary,
-                      decoration: isCompleted
-                          ? TextDecoration.lineThrough
-                          : TextDecoration.none,
-                      decorationColor: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.location_on_outlined,
-                        size: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 3),
-                      Expanded(
-                        child: Text(
-                          stop.address,
-                          style: TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (isInProgress) ...[
-                    const SizedBox(height: 10),
-                    // "Mark as Done" button shown for in-progress stop
-                    SizedBox(
-                      height: 34,
-                      child: ElevatedButton.icon(
-                        onPressed: onMarkDone,
-                        icon: const Icon(Icons.check_rounded, size: 15),
-                        label: const Text(
-                          'Mark as Done',
-                          style: TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.teal,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius:
-                            BorderRadius.circular(AppRadius.full),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 10),
-
-            // ── Scheduled time ──────────────────────────────
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  stop.scheduledTime,
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isCompleted
-                        ? AppColors.textSecondary
-                        : AppColors.textPrimary,
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Timeline column (connector + centered bubble) ────
+          SizedBox(
+            width: 36,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+              child: CustomPaint(
+                painter: _TimelinePainter(
+                  lineColor: AppColors.border,
+                  drawTopHalf: !isFirst,
+                  drawBottomHalf: !isLast,
+                ),
+                child: Center(
+                  child: _NumberBubble(
+                    number: stop.stopNumber,
+                    color: _bubbleColor,
+                    isCompleted: isCompleted,
                   ),
                 ),
-                const SizedBox(height: 4),
-                _StatusBadge(status: stop.status),
-              ],
+              ),
             ),
-          ],
-        ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // ── Card ─────────────────────────────────────────────
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+              child: _StopCard(
+                stop: stop,
+                isInProgress: isInProgress,
+                isCompleted: isCompleted,
+                onMarkDone: onMarkDone,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Number Bubble  (1 / 2 / 3 / 4 or ✓)
+//  Timeline Painter — draws the connector line behind the bubble
+//  so the bubble can sit centered on the card.
+// ─────────────────────────────────────────────────────────────
+
+class _TimelinePainter extends CustomPainter {
+  _TimelinePainter({
+    required this.lineColor,
+    required this.drawTopHalf,
+    required this.drawBottomHalf,
+  });
+
+  final Color lineColor;
+  final bool drawTopHalf;
+  final bool drawBottomHalf;
+
+  static const double _bubbleRadius = 15;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+
+    final centerX = size.width / 2;
+    final centerY = size.height / 2;
+
+    if (drawTopHalf) {
+      canvas.drawLine(
+        Offset(centerX, 0),
+        Offset(centerX, centerY - _bubbleRadius - 2),
+        paint,
+      );
+    }
+    if (drawBottomHalf) {
+      canvas.drawLine(
+        Offset(centerX, centerY + _bubbleRadius + 2),
+        Offset(centerX, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TimelinePainter old) =>
+      old.lineColor != lineColor ||
+          old.drawTopHalf != drawTopHalf ||
+          old.drawBottomHalf != drawBottomHalf;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Stop Card (clean white card, name + address, time on right)
+// ─────────────────────────────────────────────────────────────
+
+class _StopCard extends StatelessWidget {
+  const _StopCard({
+    required this.stop,
+    required this.isInProgress,
+    required this.isCompleted,
+    required this.onMarkDone,
+  });
+
+  final RouteStop stop;
+  final bool isInProgress;
+  final bool isCompleted;
+  final VoidCallback onMarkDone;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: isInProgress
+              ? AppColors.teal.withOpacity(0.40)
+              : AppColors.border.withOpacity(0.60),
+          width: isInProgress ? 1.2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // ── Name + Address ─────────────────────────────────
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  stop.patientName,
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: isCompleted
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
+                    decoration: isCompleted
+                        ? TextDecoration.lineThrough
+                        : TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  stop.address,
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: AppColors.textSecondary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (isInProgress) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 30,
+                    child: ElevatedButton.icon(
+                      onPressed: onMarkDone,
+                      icon: const Icon(Icons.check_rounded, size: 14),
+                      label: const Text(
+                        'Mark as Done',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.teal,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                          BorderRadius.circular(AppRadius.full),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // ── Scheduled time ─────────────────────────────────
+          Text(
+            stop.scheduledTime,
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: isCompleted
+                  ? AppColors.textHint
+                  : AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Number Bubble  (filled green circle with number or ✓)
 // ─────────────────────────────────────────────────────────────
 
 class _NumberBubble extends StatelessWidget {
@@ -469,23 +475,29 @@ class _NumberBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      width: 34,
-      height: 34,
+      width: 30,
+      height: 30,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color,
         shape: BoxShape.circle,
-        border: Border.all(color: color, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.25),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Center(
         child: isCompleted
-            ? Icon(Icons.check_rounded, size: 18, color: color)
+            ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
             : Text(
           '$number',
-          style: TextStyle(
+          style: const TextStyle(
             fontFamily: 'Poppins',
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: color,
+            color: Colors.white,
           ),
         ),
       ),
@@ -494,112 +506,7 @@ class _NumberBubble extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Status Badge
-// ─────────────────────────────────────────────────────────────
-
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
-  final StopStatus status;
-
-  String get _label {
-    switch (status) {
-      case StopStatus.completed:
-        return 'Done';
-      case StopStatus.inProgress:
-        return 'Active';
-      case StopStatus.skipped:
-        return 'Skipped';
-      case StopStatus.pending:
-        return 'Pending';
-    }
-  }
-
-  Color get _color {
-    switch (status) {
-      case StopStatus.completed:
-        return AppColors.success;
-      case StopStatus.inProgress:
-        return AppColors.teal;
-      case StopStatus.skipped:
-        return AppColors.textSecondary;
-      case StopStatus.pending:
-        return AppColors.textHint;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: _color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(AppRadius.full),
-      ),
-      child: Text(
-        _label,
-        style: TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: _color,
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Start Route FAB  (bottom fixed button)
-// ─────────────────────────────────────────────────────────────
-
-// Wrap TodayRouteScreen in a Scaffold with a bottom button via bottomNavigationBar
-// We override the full screen using a Stack approach in a wrapper:
-
-class TodayRouteScaffold extends ConsumerWidget {
-  const TodayRouteScaffold({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(todayRouteProvider);
-    final notifier = ref.read(todayRouteProvider.notifier);
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: _RouteAppBar(),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 350),
-        child: state.isLoading
-            ? const _LoadingView()
-            : state.isLoaded
-            ? _RouteBody(state: state)
-            : const _LoadingView(),
-      ),
-      bottomNavigationBar: state.isLoaded
-          ? _BottomBar(
-        state: state,
-        onStart: () async {
-          await notifier.startRoute();
-          if (context.mounted) {
-            Navigator.of(context).push(
-              PageRouteBuilder(
-                pageBuilder: (_, __, ___) =>
-                const NavigationMapScreen(),
-                transitionsBuilder: (_, anim, __, child) =>
-                    FadeTransition(opacity: anim, child: child),
-                transitionDuration:
-                const Duration(milliseconds: 400),
-              ),
-            );
-          }
-        },
-      )
-          : null,
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Bottom Bar
+//  Bottom Bar  (Start Route)
 // ─────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
@@ -620,15 +527,8 @@ class _BottomBar extends StatelessWidget {
         20,
         MediaQuery.of(context).padding.bottom + 12,
       ),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.background,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-        ],
       ),
       child: SizedBox(
         height: 52,
@@ -643,7 +543,7 @@ class _BottomBar extends StatelessWidget {
                 : AppColors.primary,
             disabledBackgroundColor: isCompleted
                 ? AppColors.success.withOpacity(0.70)
-                : AppColors.disabledBg,
+                : AppColors.primary.withOpacity(0.55),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppRadius.md),
             ),
@@ -661,35 +561,20 @@ class _BottomBar extends StatelessWidget {
                 valueColor: AlwaysStoppedAnimation(Colors.white),
               ),
             )
-                : Row(
+                : Text(
+              isCompleted
+                  ? 'Route Completed!'
+                  : isActive
+                  ? 'Route In Progress'
+                  : 'Start Route',
               key: ValueKey(state.startStatus),
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  isCompleted
-                      ? Icons.check_circle_rounded
-                      : isActive
-                      ? Icons.navigation_rounded
-                      : Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isCompleted
-                      ? 'Route Completed!'
-                      : isActive
-                      ? 'Route In Progress'
-                      : 'Start Route',
-                  style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                letterSpacing: 0.3,
+              ),
             ),
           ),
         ),

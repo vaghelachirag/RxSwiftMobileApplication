@@ -1,139 +1,379 @@
 import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../../../model/navigation_model.dart';
+
+import '../../../model/navigation/navigation_model.dart';
+import '../../../service/directions_service.dart';
+import '../../../service/location_service.dart';
 
 // ─────────────────────────────────────────────────────────────
-//  Calgary NW coordinates (matches the mock route stops)
+//  Service providers (overridable in tests)
 // ─────────────────────────────────────────────────────────────
 
-const _mockStops = [
+final locationServiceProvider =
+Provider<LocationService>((ref) => LocationService());
+
+final directionsServiceProvider = Provider<DirectionsService>((ref) {
+  final service = DirectionsService();
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+// ─────────────────────────────────────────────────────────────
+//  Demo data — replace with real stops from your trip API.
+//  These are kept ONLY as seed data; nothing about the navigation
+//  flow itself is mock anymore.
+// ─────────────────────────────────────────────────────────────
+
+const _demoStops = <NavigationStop>[
   NavigationStop(
     id: '1',
     stopNumber: 1,
     patientName: 'John Smith',
-    address: '456 Tuscany Dr NW',
+    address: 'Satellite Road, Ahmedabad',
     scheduledTime: '12:30 PM',
-    location: LatLng(51.1339, -114.2261),
+    location: LatLng(23.0225, 72.5714),
   ),
   NavigationStop(
     id: '2',
     stopNumber: 2,
     patientName: 'Sarah Johnson',
-    address: '789 Aspen Dr SW',
+    address: 'SG Highway, Ahmedabad',
     scheduledTime: '01:15 PM',
-    location: LatLng(51.0477, -114.1739),
+    location: LatLng(23.0588, 72.5247),
   ),
   NavigationStop(
     id: '3',
     stopNumber: 3,
     patientName: 'Robert Brown',
-    address: '123 Rocky Ridge Rd NW',
+    address: 'Maninagar, Ahmedabad',
     scheduledTime: '02:00 PM',
-    location: LatLng(51.1220, -114.2100),
+    location: LatLng(22.9951, 72.6040),
   ),
   NavigationStop(
     id: '4',
     stopNumber: 4,
     patientName: 'Linda Wilson',
-    address: '321 Crowfoot Cir NW',
+    address: 'Bopal, Ahmedabad',
     scheduledTime: '02:45 PM',
-    location: LatLng(51.1015, -114.1989),
+    location: LatLng(23.0300, 72.4630),
   ),
 ];
-
-// Driver starts near Tuscany (stop 1) area
-const _driverStart = LatLng(51.1180, -114.2090);
 
 // ─────────────────────────────────────────────────────────────
 //  Notifier
 // ─────────────────────────────────────────────────────────────
 
 class NavigationNotifier extends StateNotifier<NavigationState> {
-  NavigationNotifier()
-      : super(const NavigationState(stops: _mockStops)) {
-    _initNavigation();
+  NavigationNotifier(this._locationService, this._directionsService,
+      {List<NavigationStop>? initialStops})
+      : super(NavigationState(
+    stops: (initialStops ?? _demoStops)
+        .asMap()
+        .entries
+        .map((e) => e.value.copyWith(
+      status:
+      e.key == 0 ? StopStatus.current : StopStatus.pending,
+    ))
+        .toList(),
+  )) {
+    start();
   }
 
-  Timer? _simulationTimer;
-  int _simStep = 0;
+  final LocationService _locationService;
+  final DirectionsService _directionsService;
 
-  Future<void> _initNavigation() async {
-    // Simulate route calculation delay
-    await Future.delayed(const Duration(milliseconds: 800));
+  StreamSubscription<Position>? _positionSub;
+  DateTime _lastRouteRefresh = DateTime.fromMillisecondsSinceEpoch(0);
 
-    final routePoints = _buildRoutePolyline();
 
+  static const _refreshDistanceMeters = 150.0;
+  static const _refreshCooldown = Duration(seconds: 20);
+
+  /// Distance (m) within which the driver is considered "arrived" at a stop.
+  static const _arrivalThresholdMeters = 40.0;
+
+  // ── Public API ──────────────────────────────────────────────
+
+  /// Kicks off the entire flow. Safe to call again after an error to retry.
+  Future<void> start() async {
     state = state.copyWith(
-      status: NavigationStatus.navigating,
-      driverLocation: _driverStart,
-      polylinePoints: routePoints,
-      estimatedMinutes: 12,
-      distanceKm: 5.4,
-      etaTime: '12:30 PM',
-      isLoadingMap: false,
+      status: NavigationStatus.checkingLocation,
+      clearError: true,
     );
 
-    _startDriverSimulation();
-  }
-
-  /// Builds a realistic-looking curved polyline through all stops
-  List<LatLng> _buildRoutePolyline() {
-    // Intermediate waypoints to make route look natural on map
-    return [
-      _driverStart,
-      const LatLng(51.1210, -114.2150),
-      const LatLng(51.1280, -114.2200),
-      _mockStops[0].location, // Stop 1 — Tuscany Dr NW
-      const LatLng(51.1100, -114.2050),
-      const LatLng(51.0900, -114.1950),
-      const LatLng(51.0700, -114.1820),
-      _mockStops[1].location, // Stop 2 — Aspen Dr SW
-      const LatLng(51.0800, -114.1890),
-      const LatLng(51.1000, -114.2020),
-      _mockStops[2].location, // Stop 3 — Rocky Ridge Rd NW
-      const LatLng(51.1080, -114.2000),
-      _mockStops[3].location, // Stop 4 — Crowfoot Cir NW
-    ];
-  }
-
-  /// Simulates driver moving along the polyline
-  void _startDriverSimulation() {
-    final points = state.polylinePoints;
-    _simulationTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      if (_simStep < points.length - 1) {
-        _simStep++;
-        final newLoc = points[_simStep];
-        // Update ETA as driver moves
-        final remainingSteps = points.length - 1 - _simStep;
-        final newEta = (remainingSteps * 0.5).ceil();
+    final check = await _locationService.ensureLocationAvailable();
+    switch (check) {
+      case LocationCheckResult.serviceDisabled:
         state = state.copyWith(
-          driverLocation: newLoc,
-          estimatedMinutes: newEta.clamp(1, 12),
-          distanceKm: ((remainingSteps * 0.42)).clamp(0.1, 5.4),
+          status: NavigationStatus.locationServiceDisabled,
+          errorMessage:
+          'Location services are turned off. Please enable GPS to start delivery.',
         );
-      } else {
-        timer.cancel();
-      }
-    });
+        return;
+      case LocationCheckResult.permissionDenied:
+        state = state.copyWith(
+          status: NavigationStatus.locationPermissionDenied,
+          errorMessage:
+          'Location permission is required to navigate to your deliveries.',
+        );
+        return;
+      case LocationCheckResult.permissionPermanentlyDenied:
+        state = state.copyWith(
+          status: NavigationStatus.locationPermissionPermanentlyDenied,
+          errorMessage:
+          'Location permission has been permanently denied. Please enable it from app settings.',
+        );
+        return;
+      case LocationCheckResult.ready:
+        break;
+    }
+
+    // Fetch initial location
+    final LatLng currentLocation;
+    try {
+      currentLocation = await _locationService.getCurrentLocation();
+    } catch (e) {
+      state = state.copyWith(
+        status: NavigationStatus.error,
+        errorMessage: 'Could not get your current location. Please try again.',
+      );
+      return;
+    }
+
+    state = state.copyWith(driverLocation: currentLocation);
+
+    // Calculate route to current stop
+    await _fetchRouteToCurrentStop(from: currentLocation);
+
+    // Begin live tracking (only if route fetch succeeded)
+    if (state.status == NavigationStatus.navigating) {
+      _startLiveLocationTracking();
+    }
   }
 
+  /// Called from the screen once the GoogleMap controller exists.
   void onMapCreated(GoogleMapController controller) {
     state = state.copyWith(mapController: controller);
   }
 
+  /// Driver marks the current stop as delivered and moves to the next one.
+  Future<void> markCurrentStopDelivered() async {
+    final updated = [...state.stops];
+    if (state.currentStopIndex >= updated.length) return;
+
+    updated[state.currentStopIndex] =
+        updated[state.currentStopIndex].copyWith(status: StopStatus.delivered);
+
+    if (!state.hasNextStop) {
+      // All deliveries done
+      state = state.copyWith(
+        stops: updated,
+        status: NavigationStatus.tripCompleted,
+        polylinePoints: const [],
+        estimatedMinutes: 0,
+        distanceKm: 0,
+      );
+      _positionSub?.cancel();
+      return;
+    }
+
+    final nextIndex = state.currentStopIndex + 1;
+    updated[nextIndex] = updated[nextIndex].copyWith(status: StopStatus.current);
+
+    state = state.copyWith(
+      stops: updated,
+      currentStopIndex: nextIndex,
+      status: NavigationStatus.fetchingRoute,
+    );
+
+    if (state.driverLocation != null) {
+      await _fetchRouteToCurrentStop(from: state.driverLocation!);
+    }
+  }
+
+  /// User explicitly ended the trip.
   Future<void> endTrip() async {
-    _simulationTimer?.cancel();
+    _positionSub?.cancel();
     state = state.copyWith(status: NavigationStatus.ended);
+  }
+
+  /// Manual retry after an error / permission denial.
+  Future<void> retry() => start();
+
+  /// Re-check after the user has been sent to settings.
+  Future<void> openLocationSettingsAndRetry() async {
+    await _locationService.openLocationSettings();
+    // Give the OS a moment, then retry.
+    await Future.delayed(const Duration(milliseconds: 500));
+    await start();
+  }
+
+  Future<void> openAppSettingsAndRetry() async {
+    await _locationService.openAppSettings();
+    await Future.delayed(const Duration(milliseconds: 500));
+    await start();
+  }
+
+  // ── Internal ────────────────────────────────────────────────
+
+  Future<void> _fetchRouteToCurrentStop({required LatLng from}) async {
+    final destination = state.currentStop?.location;
+    if (destination == null) return;
+
+    state = state.copyWith(status: NavigationStatus.fetchingRoute);
+
+    try {
+      final route = await _directionsService.getRoute(
+        origin: from,
+        destination: destination,
+      );
+
+      _lastRouteRefresh = DateTime.now();
+
+      state = state.copyWith(
+        status: NavigationStatus.navigating,
+        polylinePoints: route.polylinePoints,
+        distanceKm: route.distanceKm,
+        estimatedMinutes: route.durationMinutes,
+        etaTime: _formatEtaTime(route.durationMinutes),
+        clearError: true,
+      );
+
+      // Frame the camera to show the whole route.
+      _animateCameraToRoute(route.polylinePoints);
+    } on DirectionsException catch (e) {
+      state = state.copyWith(
+        status: NavigationStatus.error,
+        errorMessage: e.message,
+      );
+    } catch (_) {
+      state = state.copyWith(
+        status: NavigationStatus.error,
+        errorMessage:
+        'Could not fetch the delivery route. Check your connection and try again.',
+      );
+    }
+  }
+
+  void _startLiveLocationTracking() {
+    _positionSub?.cancel();
+    _positionSub = _locationService.liveLocationStream().listen(
+      _onPositionUpdate,
+      onError: (_) {
+        // Don't blow up the screen on transient GPS errors.
+      },
+    );
+  }
+
+  void _onPositionUpdate(Position position) {
+    final newLocation = LatLng(position.latitude, position.longitude);
+    state = state.copyWith(
+      driverLocation: newLocation,
+      driverHeading: position.heading,
+    );
+
+    final currentStop = state.currentStop;
+    if (currentStop == null) return;
+
+    // 1) Arrived?
+    final distanceToStop =
+    _locationService.distanceBetweenMeters(newLocation, currentStop.location);
+    if (distanceToStop <= _arrivalThresholdMeters &&
+        state.status != NavigationStatus.reachedStop) {
+      state = state.copyWith(status: NavigationStatus.reachedStop);
+      return;
+    }
+
+    // 2) Need a fresh route? Only if we've drifted notably and cooled down.
+    final drift = state.polylinePoints.isNotEmpty
+        ? _locationService.distanceBetweenMeters(
+        newLocation, state.polylinePoints.first)
+        : double.infinity;
+    final cooledDown =
+        DateTime.now().difference(_lastRouteRefresh) > _refreshCooldown;
+    if (drift > _refreshDistanceMeters && cooledDown) {
+      _fetchRouteToCurrentStop(from: newLocation);
+      return;
+    }
+
+    // 3) Otherwise just nudge the camera to follow the driver.
+    _animateCameraToDriver(newLocation, position.heading);
+
+    // 4) Cheaply decrement displayed distance/ETA based on how far we've moved
+    //    along the polyline (approximation — full refresh happens on drift).
+    if (state.polylinePoints.isNotEmpty) {
+      final remainingKm = _approxRemainingKm(newLocation);
+      if (remainingKm < state.distanceKm) {
+        state = state.copyWith(distanceKm: remainingKm);
+      }
+    }
+  }
+
+  double _approxRemainingKm(LatLng from) {
+    double total = 0;
+    var prev = from;
+    for (final p in state.polylinePoints) {
+      total += _locationService.distanceBetweenMeters(prev, p);
+      prev = p;
+    }
+    return total / 1000.0;
+  }
+
+  String _formatEtaTime(int durationMinutes) {
+    final arrival = DateTime.now().add(Duration(minutes: durationMinutes));
+    final hour12 = arrival.hour == 0
+        ? 12
+        : (arrival.hour > 12 ? arrival.hour - 12 : arrival.hour);
+    final period = arrival.hour >= 12 ? 'PM' : 'AM';
+    final mm = arrival.minute.toString().padLeft(2, '0');
+    return '${hour12.toString().padLeft(2, '0')}:$mm $period';
+  }
+
+  void _animateCameraToRoute(List<LatLng> points) {
+    final controller = state.mapController;
+    if (controller == null || points.isEmpty) return;
+    final bounds = _boundsFromLatLngList(points);
+    controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+  }
+
+  void _animateCameraToDriver(LatLng driver, double heading) {
+    final controller = state.mapController;
+    if (controller == null) return;
+    controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: driver,
+          zoom: 16,
+          bearing: heading.isNaN ? 0 : heading,
+          tilt: 35,
+        ),
+      ),
+    );
+  }
+
+  LatLngBounds _boundsFromLatLngList(List<LatLng> list) {
+    double minLat = list.first.latitude;
+    double maxLat = list.first.latitude;
+    double minLng = list.first.longitude;
+    double maxLng = list.first.longitude;
+    for (final p in list) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    return LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
   }
 
   @override
   void dispose() {
-    _simulationTimer?.cancel();
+    _positionSub?.cancel();
     state.mapController?.dispose();
     super.dispose();
   }
@@ -145,5 +385,8 @@ class NavigationNotifier extends StateNotifier<NavigationState> {
 
 final navigationProvider =
 StateNotifierProvider.autoDispose<NavigationNotifier, NavigationState>(
-      (ref) => NavigationNotifier(),
+      (ref) => NavigationNotifier(
+    ref.read(locationServiceProvider),
+    ref.read(directionsServiceProvider),
+  ),
 );

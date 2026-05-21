@@ -79,11 +79,6 @@ abstract class _C {
 //  Login Screen
 // ─────────────────────────────────────────────────────────────
 
-/// Login screen — email + password, wired to [authProvider].
-///
-/// On success     → replace with TodayRouteScaffold.
-/// On no-internet → shows [AppDialogs.showNoInternet].
-/// On other error → shows inline error banner below the form.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -132,6 +127,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   // ── Actions ───────────────────────────────────────────────
 
   void _submit() {
+
+    _emailCtrl.text = "driver@rxswift.com";
+    _passwordCtrl.text = "Driver@123";
+
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
