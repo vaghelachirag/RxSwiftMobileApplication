@@ -1,7 +1,9 @@
 // ============================================================================
 // presentation/widgets/order_summary_card.dart
 // ============================================================================
+
 import 'package:flutter/material.dart';
+
 import '../features/delivery_confirm/domain/delivery_state.dart';
 import '../theme/app_theme.dart';
 
@@ -67,7 +69,6 @@ class OrderSummaryCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: AppSpacing.sm),
-                    // Pill on its own line — no more horizontal overflow.
                     Align(
                       alignment: Alignment.centerLeft,
                       child: _StatusPill(label: order.statusLabel),
@@ -78,7 +79,7 @@ class OrderSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          Divider(height: 1, color: AppColors.cardBorder),
+          const Divider(height: 1, color: AppColors.cardBorder),
           const SizedBox(height: AppSpacing.lg),
           _InfoRow(
             icon: Icons.location_on_outlined,

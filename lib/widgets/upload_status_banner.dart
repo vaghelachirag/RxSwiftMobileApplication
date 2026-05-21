@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import '../features/delivery_confirm/domain/delivery_state.dart';
 import '../theme/app_theme.dart';
 
-
 class UploadStatusBanner extends StatelessWidget {
   const UploadStatusBanner({
     super.key,

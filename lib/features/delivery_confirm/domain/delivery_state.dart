@@ -7,26 +7,58 @@ import 'package:flutter/foundation.dart';
 
 /// All possible stages of the delivery-confirmation flow.
 enum DeliveryStatus {
-  /// Nothing captured yet — show the "Open Camera" prompt.
   initial,
-
-  /// The native camera UI is being launched.
   cameraOpening,
-
-  /// A photo has been captured and is ready to upload.
   photoCaptured,
-
-  /// The captured photo is being uploaded to the server.
   uploading,
-
-  /// Upload completed successfully — delivery confirmed.
   uploadSuccess,
-
-  /// Upload failed (server error). Allow retry.
   uploadFailed,
-
-  /// No internet. Photo saved locally; will upload when restored.
   offlinePendingUpload,
+}
+
+/// Geolocation captured at the moment the delivery photo is taken.
+@immutable
+class CaptureLocation {
+  const CaptureLocation({
+    required this.latitude,
+    required this.longitude,
+    this.address,
+  });
+
+  final double latitude;
+  final double longitude;
+
+  /// Best-effort reverse-geocoded address. May be null.
+  final String? address;
+
+  /// "23.022500, 72.571400" — useful for compact display.
+  String get coordinatesLabel =>
+      '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
+
+  Map<String, dynamic> toJson() => {
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+      };
+
+  factory CaptureLocation.fromJson(Map<String, dynamic> json) {
+    return CaptureLocation(
+      latitude: (json['latitude'] as num).toDouble(),
+      longitude: (json['longitude'] as num).toDouble(),
+      address: json['address'] as String?,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CaptureLocation &&
+          latitude == other.latitude &&
+          longitude == other.longitude &&
+          address == other.address;
+
+  @override
+  int get hashCode => Object.hash(latitude, longitude, address);
 }
 
 @immutable
@@ -34,52 +66,57 @@ class DeliveryState {
   const DeliveryState({
     this.status = DeliveryStatus.initial,
     this.photoPath,
+    this.location,
     this.errorMessage,
+    this.locationWarning,
     this.uploadProgress = 0.0,
   });
 
   final DeliveryStatus status;
-
-  /// Local file path of the captured image (null until a photo is taken).
   final String? photoPath;
 
-  /// Human-readable error for the [uploadFailed] state.
+  /// Lat/long/address captured alongside the photo. May be null if location
+  /// could not be obtained.
+  final CaptureLocation? location;
+
   final String? errorMessage;
 
-  /// 0.0 → 1.0 upload progress, used to drive the progress indicator.
+  /// Non-blocking warning shown when location could not be captured.
+  final String? locationWarning;
+
   final double uploadProgress;
 
-  // -- Convenience getters -------------------------------------------------
-
   bool get hasPhoto => photoPath != null && photoPath!.isNotEmpty;
-
+  bool get hasLocation => location != null;
   bool get isUploading => status == DeliveryStatus.uploading;
-
   bool get isSuccess => status == DeliveryStatus.uploadSuccess;
-
   bool get isOfflinePending => status == DeliveryStatus.offlinePendingUpload;
 
-  /// "Upload & Complete" is only enabled once a photo exists and we're
-  /// not mid-upload / already done.
   bool get canComplete =>
       hasPhoto &&
       status != DeliveryStatus.uploading &&
       status != DeliveryStatus.uploadSuccess;
 
-  // -- copyWith ------------------------------------------------------------
-
   DeliveryState copyWith({
     DeliveryStatus? status,
     String? photoPath,
+    CaptureLocation? location,
     String? errorMessage,
+    String? locationWarning,
     double? uploadProgress,
     bool clearError = false,
     bool clearPhoto = false,
+    bool clearLocation = false,
+    bool clearLocationWarning = false,
   }) {
     return DeliveryState(
       status: status ?? this.status,
       photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
+      location: clearLocation ? null : (location ?? this.location),
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      locationWarning: clearLocationWarning
+          ? null
+          : (locationWarning ?? this.locationWarning),
       uploadProgress: uploadProgress ?? this.uploadProgress,
     );
   }
@@ -91,15 +128,20 @@ class DeliveryState {
           runtimeType == other.runtimeType &&
           status == other.status &&
           photoPath == other.photoPath &&
+          location == other.location &&
           errorMessage == other.errorMessage &&
+          locationWarning == other.locationWarning &&
           uploadProgress == other.uploadProgress;
 
   @override
-  int get hashCode =>
-      status.hashCode ^
-      photoPath.hashCode ^
-      errorMessage.hashCode ^
-      uploadProgress.hashCode;
+  int get hashCode => Object.hash(
+        status,
+        photoPath,
+        location,
+        errorMessage,
+        locationWarning,
+        uploadProgress,
+      );
 }
 
 /// Plain order model shown in the summary card.

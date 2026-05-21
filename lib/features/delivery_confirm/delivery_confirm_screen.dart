@@ -10,10 +10,10 @@ import 'package:rxswift/features/delivery_confirm/provider/delivery_confirmation
 import '../../theme/app_theme.dart';
 import '../../widgets/camera_capture_area.dart';
 import '../../widgets/instruction_card.dart';
+import '../../widgets/location_info_card.dart';
 import '../../widgets/order_summary_card.dart';
 import '../../widgets/upload_status_banner.dart';
 import 'domain/delivery_state.dart';
-
 
 
 class DeliveryConfirmationScreen extends ConsumerWidget {
@@ -76,6 +76,13 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
                         onOpenCamera: controller.openCamera,
                         onRetake: controller.retakePhoto,
                       ),
+                      if (state.hasPhoto) ...[
+                        const SizedBox(height: AppSpacing.lg),
+                        LocationInfoCard(
+                          state: state,
+                          onRetryLocation: controller.retryLocation,
+                        ),
+                      ],
                       const SizedBox(height: AppSpacing.lg),
                       UploadStatusBanner(
                         state: state,

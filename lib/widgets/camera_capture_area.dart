@@ -5,9 +5,9 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+
 import '../features/delivery_confirm/domain/delivery_state.dart';
 import '../theme/app_theme.dart';
-
 
 class CameraCaptureArea extends StatelessWidget {
   const CameraCaptureArea({

@@ -40,10 +40,15 @@ dependencies:
   intl_phone_field: ^3.2.0
   google_maps_flutter: ^2.6.1
   url_launcher: ^6.3.0
-  geolocator: ^11.0.0
+  geolocator: ^12.0.0
+  geocoding: ^3.0.0
 
   # Camera-only image capture
   image_picker: ^1.1.2
+
+  # Stamp location text onto the photo + temp file storage
+  image: ^4.2.0
+  path_provider: ^2.1.4
 
   # Networking
   dio: ^5.4.3
