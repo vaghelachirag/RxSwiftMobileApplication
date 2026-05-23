@@ -19,6 +19,10 @@ class AppColors {
   static const Color accentGreen = Color(0xFF2E9E6B);
   static const Color accentGreenDark = Color(0xFF1F7E54);
 
+  static const Color fieldFill = Color(0xFFF4F7FA);
+  static const Color dangerDark = Color(0xFFC92A2A);
+  static const Color dangerBg = Color(0xFFFDECEC);
+
   // ── Text ───────────────────────────────────────────────────
   static const Color textPrimary = Color(0xFF1A1A1A);
   static const Color textSecondary = Color(0xFF6B7A6B);
@@ -102,6 +106,8 @@ class AppSpacing {
 
 class AppRadius {
   AppRadius._();
+
+  static const double field = 12.0;
 
   static const double sm = 6.0;
   static const double md = 12.0;

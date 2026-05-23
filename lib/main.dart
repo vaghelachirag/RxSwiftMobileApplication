@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:rxswift/theme/app_theme.dart';
-import 'features/delivery_confirm/delivery_confirm_screen.dart';
-import 'features/splash/splash_screen.dart';
+import 'package:rxswift/features/failed_delivery/presentation/screens/failed_delivery_screen.dart';
+
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,7 +33,7 @@ class RxSwiftApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Poppins',
       ),
-      home: const DeliveryConfirmationScreen(),
+      home: const FailedDeliveryScreen(),
     );
   }
 }
