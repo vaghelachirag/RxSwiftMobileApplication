@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:rxswift/features/failed_delivery/presentation/screens/failed_delivery_screen.dart';
+
+import 'features/splash/splash_screen.dart';
 
 
 void main() {
@@ -33,7 +34,7 @@ class RxSwiftApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Poppins',
       ),
-      home: const FailedDeliveryScreen(),
+      home: const SplashScreen(),
     );
   }
 }

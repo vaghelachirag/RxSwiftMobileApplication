@@ -2,16 +2,6 @@
 
 import 'package:rxswift/core/network/network_exception.dart';
 
-/// Generic sealed wrapper for every API call result.
-///
-/// Usage:
-/// ```dart
-/// final result = await authRepo.login(request);
-/// result.when(
-///   success: (data) => ...,
-///   failure: (e)    => ...,
-/// );
-/// ```
 sealed class ApiResult<T> {
   const ApiResult();
 }

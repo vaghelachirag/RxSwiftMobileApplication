@@ -1,12 +1,22 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+// ============================================================================
+// provider/today_route_provider.dart
+// Real-API-backed Today's Route state. Same state shape the screen expects.
+// ============================================================================
 
-import '../../../model/route_model.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/network/api_result.dart';
+import '../../../uttils/app_constants.dart';
+import '../data/route_repository.dart';
+import '../model/route_model.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  State
 // ─────────────────────────────────────────────────────────────
 
 enum RouteLoadStatus { idle, loading, loaded, error }
+
 enum RouteStartStatus { idle, starting, active, completed }
 
 class TodayRouteState {
@@ -24,6 +34,7 @@ class TodayRouteState {
 
   bool get isLoading => loadStatus == RouteLoadStatus.loading;
   bool get isLoaded => loadStatus == RouteLoadStatus.loaded;
+  bool get isError => loadStatus == RouteLoadStatus.error;
   bool get isRouteActive => startStatus == RouteStartStatus.active;
   bool get isRouteCompleted => startStatus == RouteStartStatus.completed;
 
@@ -35,12 +46,13 @@ class TodayRouteState {
     RouteStartStatus? startStatus,
     TodayRoute? route,
     String? errorMessage,
+    bool clearError = false,
   }) {
     return TodayRouteState(
       loadStatus: loadStatus ?? this.loadStatus,
       startStatus: startStatus ?? this.startStatus,
       route: route ?? this.route,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
@@ -50,97 +62,101 @@ class TodayRouteState {
 // ─────────────────────────────────────────────────────────────
 
 class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
-  TodayRouteNotifier() : super(const TodayRouteState()) {
+  TodayRouteNotifier(this._repository) : super(const TodayRouteState()) {
     loadRoute();
   }
 
+  final RouteRepository _repository;
+
   Future<void> loadRoute() async {
-    state = state.copyWith(loadStatus: RouteLoadStatus.loading);
+    state = state.copyWith(loadStatus: RouteLoadStatus.loading, clearError: true);
 
-    // Simulate API fetch
-    await Future.delayed(const Duration(milliseconds: 900));
+    final result = await _repository.getTodayRoute();
 
-    // Mock data matching the screenshot
-    const mockRoute = TodayRoute(
-      totalStops: 4,
-      pickupTime: '10:00 PM',
-      stops: [
-        RouteStop(
-          id: '1',
-          stopNumber: 1,
-          patientName: 'John Smith',
-          address: '456 Tuscany Dr NW',
-          scheduledTime: '12:30 PM',
-        ),
-        RouteStop(
-          id: '2',
-          stopNumber: 2,
-          patientName: 'Sarah Johnson',
-          address: '789 Aspen Dr SW',
-          scheduledTime: '01:15 PM',
-        ),
-        RouteStop(
-          id: '3',
-          stopNumber: 3,
-          patientName: 'Robert Brown',
-          address: '123 Rocky Ridge Rd NW',
-          scheduledTime: '02:00 PM',
-        ),
-        RouteStop(
-          id: '4',
-          stopNumber: 4,
-          patientName: 'Linda Wilson',
-          address: '321 Crowfoot Cir NW',
-          scheduledTime: '02:45 PM',
-        ),
-      ],
-    );
-
-    state = state.copyWith(
-      loadStatus: RouteLoadStatus.loaded,
-      route: mockRoute,
-    );
+    switch (result) {
+      case ApiSuccess(:final data):
+        state = state.copyWith(
+          loadStatus: RouteLoadStatus.loaded,
+          route: data,
+        );
+      case ApiFailure(:final exception):
+        state = state.copyWith(
+          loadStatus: RouteLoadStatus.error,
+          errorMessage: exception.message,
+        );
+    }
   }
 
+  /// Called when the driver taps "Start Route".
+  /// Updates the driver status to "2" (active) on the backend, then activates
+  /// the route locally. If the status call fails, the route is NOT started and
+  /// an error is surfaced.
   Future<void> startRoute() async {
-    state = state.copyWith(startStatus: RouteStartStatus.starting);
-    await Future.delayed(const Duration(milliseconds: 600));
-    state = state.copyWith(startStatus: RouteStartStatus.active);
+    if (state.route == null || state.route!.stops.isEmpty) return;
+    if (state.startStatus == RouteStartStatus.starting) return; // guard double-tap
 
-    // Mark first stop as in-progress
-    _setStopStatus('1', StopStatus.inProgress);
+    state = state.copyWith(
+      startStatus: RouteStartStatus.starting,
+      clearError: true,
+    );
+
+    final result = await _repository.updateDriverStatus(status: ApiConstants.driverOnRouteStatus);
+
+    switch (result) {
+      case ApiSuccess():
+        state = state.copyWith(startStatus: RouteStartStatus.active);
+        // Mark the first stop in-progress.
+        _setStopStatus(state.route!.stops.first.id, StopStatus.inProgress);
+      case ApiFailure(:final exception):
+      // Revert to idle so the driver can retry the Start button.
+        state = state.copyWith(
+          startStatus: RouteStartStatus.idle,
+          errorMessage: exception.message,
+        );
+    }
   }
 
   void markStopCompleted(String stopId) {
     _setStopStatus(stopId, StopStatus.completed);
 
-    // Auto-progress: set next pending stop to inProgress
     final stops = state.route?.stops ?? [];
-    final nextStop = stops.firstWhere(
-          (s) => s.status == StopStatus.pending,
-      orElse: () => stops.last,
-    );
-    if (nextStop.status == StopStatus.pending) {
-      _setStopStatus(nextStop.id, StopStatus.inProgress);
+    final hasPending = stops.any((s) => s.status == StopStatus.pending);
+    if (hasPending) {
+      final next = stops.firstWhere((s) => s.status == StopStatus.pending);
+      _setStopStatus(next.id, StopStatus.inProgress);
     }
 
-    // Check if all completed
-    final updated = state.route!.stops
-        .where((s) => s.status == StopStatus.completed || s.id == stopId)
-        .length;
-    if (updated == stops.length) {
+    final allDone =
+    state.route!.stops.every((s) => s.status == StopStatus.completed);
+    if (allDone) {
       state = state.copyWith(startStatus: RouteStartStatus.completed);
     }
   }
 
   void _setStopStatus(String stopId, StopStatus status) {
     if (state.route == null) return;
-    final updatedStops = state.route!.stops
+    final updated = state.route!.stops
         .map((s) => s.id == stopId ? s.copyWith(status: status) : s)
         .toList();
-    state = state.copyWith(
-      route: state.route!.copyWith(stops: updatedStops),
-    );
+    state = state.copyWith(route: state.route!.copyWith(stops: updated));
+  }
+
+  /// Opens the stop in Google Maps. Uses coordinates when present, otherwise
+  /// falls back to a text address search.
+  Future<bool> openInGoogleMaps(RouteStop stop) async {
+    final Uri uri;
+    if (stop.hasCoordinates) {
+      uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${stop.latitude},${stop.longitude}',
+      );
+    } else {
+      final q = Uri.encodeComponent(stop.address);
+      uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$q');
+    }
+    if (await canLaunchUrl(uri)) {
+      return launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    return false;
   }
 
   void refresh() => loadRoute();
@@ -152,5 +168,5 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
 
 final todayRouteProvider =
 StateNotifierProvider<TodayRouteNotifier, TodayRouteState>(
-      (ref) => TodayRouteNotifier(),
+      (ref) => TodayRouteNotifier(ref.watch(routeRepositoryProvider)),
 );

@@ -147,16 +147,27 @@ class DioClient {
     }
   }
 
-  // ── Response envelope unwrapper ────────────────────────────
+  /// Generic PATCH request.
+  Future<ApiResult<T>> patch<T>(
+      String endpoint, {
+        dynamic data,
+        Map<String, dynamic>? queryParameters,
+        required T Function(dynamic json) fromJson,
+      }) async {
+    try {
+      await _assertConnected();
+      final response = await _dio.patch(
+        endpoint,
+        data: data,
+        queryParameters: queryParameters,
+      );
+      return ApiSuccess(fromJson(_extractData(response)));
+    } catch (e) {
+      return ApiFailure(networkExceptionFromError(e));
+    }
+  }
 
-  /// The backend wraps ALL responses in a standard envelope:
-  ///
-  ///   { "success": true,  "data": {...},  "message": "..." }  ← happy path
-  ///   { "success": false, "data": null,   "message": "..." }  ← server error
-  ///
-  /// When [success] is false we throw [ServerException] with the server's
-  /// own message so each HTTP method's catch block converts it into an
-  /// [ApiFailure] — instead of silently forwarding null to [fromJson].
+  // ── Response envelope unwrapper ────────────────────────────
   dynamic _extractData(Response response) {
     final body = response.data;
 

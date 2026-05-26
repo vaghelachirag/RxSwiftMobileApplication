@@ -128,8 +128,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   void _submit() {
 
-    _emailCtrl.text = "driver@rxswift.com";
-    _passwordCtrl.text = "Driver@123";
+    _emailCtrl.text = "vaghelacd99@gmail.com";
+    _passwordCtrl.text = "12345678";
 
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;

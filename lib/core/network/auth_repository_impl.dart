@@ -11,7 +11,7 @@ import 'auth_repository_datasource.dart';
 ///
 /// Responsibilities:
 ///  1. Delegate HTTP to the datasource.
-///  2. On success, persist the token via [TokenStorage].
+///  2. On success, persist tokens + user id via [TokenStorage].
 ///  3. Return the result unchanged to the caller.
 class AuthRepositoryImpl implements AuthRepository {
   const AuthRepositoryImpl({
@@ -27,9 +27,13 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<ApiResult<LoginResponseModel>> login(LoginRequestModel request) async {
     final result = await _datasource.login(request);
 
-    // Persist token on success so subsequent requests are authorised.
+    // DioClient already unwrapped the envelope, so `data` is the flattened
+    // LoginResponseModel with tokens directly on it.
     if (result case ApiSuccess(:final data)) {
-      await _tokenStorage.saveToken(data.token);
+      await _tokenStorage.saveToken(data.accessToken);
+      await _tokenStorage.saveRefreshToken(data.refreshToken);
+      await _tokenStorage.saveAccessTokenExpiry(data.accessTokenExpiresAt);
+      await _tokenStorage.saveRefreshTokenExpiry(data.refreshTokenExpiresAt);
       await _tokenStorage.saveUserId(data.user.id);
     }
 
@@ -46,7 +50,7 @@ class AuthRepositoryImpl implements AuthRepository {
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepositoryImpl(
-    datasource:   ref.watch(authRemoteDatasourceProvider),
+    datasource: ref.watch(authRemoteDatasourceProvider),
     tokenStorage: ref.watch(tokenStorageProvider),
   );
 });

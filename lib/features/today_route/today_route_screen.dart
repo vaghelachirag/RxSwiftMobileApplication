@@ -3,9 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/features/today_route/provider/today_route_provider.dart';
 
-import '../../model/route_model.dart';
 import '../../theme/app_theme.dart';
 import '../navigation/navigation_screen.dart';
+import 'model/route_model.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  Today Route Screen  (Figma redesign)
@@ -34,6 +34,11 @@ class TodayRouteScreen extends ConsumerWidget {
             duration: const Duration(milliseconds: 350),
             child: state.isLoading
                 ? const _LoadingView()
+                : state.isError
+                ? _ErrorView(
+                    message: state.errorMessage ?? 'Something went wrong.',
+                    onRetry: () => notifier.refresh(),
+                  )
                 : state.isLoaded
                 ? _RouteBody(state: state)
                 : const _LoadingView(),
@@ -126,6 +131,59 @@ class _LoadingView extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Error
+// ─────────────────────────────────────────────────────────────
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_rounded,
+                size: 48, color: AppColors.textSecondary),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry',
+                  style: TextStyle(fontFamily: 'Poppins')),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Main Body
 // ─────────────────────────────────────────────────────────────
 
@@ -162,6 +220,18 @@ class _RouteBody extends ConsumerWidget {
                 onMarkDone: () => ref
                     .read(todayRouteProvider.notifier)
                     .markStopCompleted(stop.id),
+                onOpenMaps: () async {
+                  final ok = await ref
+                      .read(todayRouteProvider.notifier)
+                      .openInGoogleMaps(stop);
+                  if (!ok && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Could not open Google Maps.'),
+                      ),
+                    );
+                  }
+                },
               );
             },
           ),
@@ -207,6 +277,7 @@ class _TimelineStop extends StatelessWidget {
     required this.isLast,
     required this.isRouteActive,
     required this.onMarkDone,
+    required this.onOpenMaps,
   });
 
   final RouteStop stop;
@@ -214,6 +285,7 @@ class _TimelineStop extends StatelessWidget {
   final bool isLast;
   final bool isRouteActive;
   final VoidCallback onMarkDone;
+  final VoidCallback onOpenMaps;
 
   Color get _bubbleColor {
     switch (stop.status) {
@@ -271,6 +343,7 @@ class _TimelineStop extends StatelessWidget {
                 isInProgress: isInProgress,
                 isCompleted: isCompleted,
                 onMarkDone: onMarkDone,
+                onTap: onOpenMaps,
               ),
             ),
           ),
@@ -341,16 +414,23 @@ class _StopCard extends StatelessWidget {
     required this.isInProgress,
     required this.isCompleted,
     required this.onMarkDone,
+    required this.onTap,
   });
 
   final RouteStop stop;
   final bool isInProgress;
   final bool isCompleted;
   final VoidCallback onMarkDone;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -438,19 +518,58 @@ class _StopCard extends StatelessWidget {
 
           const SizedBox(width: 10),
 
-          // ── Scheduled time ─────────────────────────────────
-          Text(
-            stop.scheduledTime,
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: isCompleted
-                  ? AppColors.textHint
-                  : AppColors.textSecondary,
-            ),
+          // ── Pickup/Drop label + tap-to-navigate affordance ──
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _TypeChip(type: stop.stopType, dimmed: isCompleted),
+              const SizedBox(height: 8),
+              Icon(
+                Icons.directions_rounded,
+                size: 18,
+                color: isCompleted
+                    ? AppColors.textHint
+                    : AppColors.primary,
+              ),
+            ],
           ),
         ],
+      ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Pickup / Drop chip
+// ─────────────────────────────────────────────────────────────
+
+class _TypeChip extends StatelessWidget {
+  const _TypeChip({required this.type, required this.dimmed});
+  final StopType type;
+  final bool dimmed;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPickup = type == StopType.pickup;
+    final base = isPickup ? AppColors.success : AppColors.primary;
+    final color = dimmed ? AppColors.textHint : base;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Text(
+        type.label,
+        style: TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }

@@ -18,7 +18,7 @@ class NavigationMarkerFactory {
   /// Driver marker — circular blue badge with a small arrow.
   Future<BitmapDescriptor> driverMarker({double devicePixelRatio = 3}) async {
     if (_driverCached != null) return _driverCached!;
-    final size = (56 * devicePixelRatio).toInt();
+    final size = (44 * devicePixelRatio).toInt();
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final center = Offset(size / 2, size / 2);
@@ -67,7 +67,10 @@ class NavigationMarkerFactory {
 
     final img = await recorder.endRecording().toImage(size, size);
     final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-    _driverCached = BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    _driverCached = BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      imagePixelRatio: devicePixelRatio,   // <-- same fix
+    );
     return _driverCached!;
   }
 
@@ -138,8 +141,8 @@ class NavigationMarkerFactory {
     required bool large,
     required double devicePixelRatio,
   }) async {
-    final width = ((large ? 56 : 42) * devicePixelRatio).toInt();
-    final height = ((large ? 72 : 54) * devicePixelRatio).toInt();
+    final width = ((large ? 44 : 32) * devicePixelRatio).toInt();
+    final height = ((large ? 58 : 42) * devicePixelRatio).toInt();
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
@@ -214,6 +217,9 @@ class NavigationMarkerFactory {
 
     final img = await recorder.endRecording().toImage(width, height);
     final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    return BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      imagePixelRatio: devicePixelRatio,   // <-- tells the map the bitmap is pre-scaled
+    );
   }
 }
