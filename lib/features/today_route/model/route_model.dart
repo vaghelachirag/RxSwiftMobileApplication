@@ -1,16 +1,31 @@
 // ============================================================================
-// model/route_model.dart
-// Mirrors the /api/driver/today-route response. Field names kept compatible
-// with the existing TodayRouteScreen where practical, via getters.
+// features/today_route/model/route_model.dart
+//
+// Domain models for "Today's Route", mapped from the trip API response.
+//
+// NOTE: If you already have this file in your project, KEEP YOURS and delete
+// this one — it is reconstructed to match how today_route_provider.dart and
+// today_route_screen.dart use it, so the route_map screen can share the exact
+// same types. The JSON keys below mirror the sample API response.
 // ============================================================================
 
-/// Pickup vs drop leg of an order.
+import 'package:flutter/foundation.dart';
+
+/// Pickup (collect from pharmacy) vs Drop (deliver to patient).
 enum StopType { pickup, drop }
 
 extension StopTypeX on StopType {
-  /// Server code → enum.
-  static StopType fromCode(String? code) {
-    switch ((code ?? '').toUpperCase()) {
+  /// Chip label used across the UI.
+  String get label => this == StopType.pickup ? 'Pickup' : 'Drop';
+
+  bool get isPickup => this == StopType.pickup;
+  bool get isDrop => this == StopType.drop;
+
+  /// "Pickup From" / "Deliver To" address heading.
+  String get addressLabel => isPickup ? 'Pickup From' : 'Deliver To';
+
+  static StopType fromApi(String? raw) {
+    switch ((raw ?? '').toUpperCase()) {
       case 'PICKUP':
         return StopType.pickup;
       case 'DROP':
@@ -19,37 +34,39 @@ extension StopTypeX on StopType {
         return StopType.drop;
     }
   }
-
-  /// UI label per the spec: PICKUP -> "Pickup", DROP -> "Drop".
-  String get label => this == StopType.pickup ? 'Pickup' : 'Drop';
-
-  String get code => this == StopType.pickup ? 'PICKUP' : 'DROP';
 }
 
-/// Lifecycle status of a stop.
+/// Lifecycle of a single stop.
 enum StopStatus { pending, inProgress, completed, skipped }
 
 extension StopStatusX on StopStatus {
-  static StopStatus fromCode(String? code) {
-    switch ((code ?? '').toUpperCase()) {
-      case 'COMPLETED':
-      case 'DELIVERED':
-        return StopStatus.completed;
+  static StopStatus fromApi(String? raw) {
+    switch ((raw ?? '').toUpperCase()) {
+      case 'PENDING':
+        return StopStatus.pending;
       case 'INPROGRESS':
       case 'IN_PROGRESS':
+      case 'IN-PROGRESS':
         return StopStatus.inProgress;
+      case 'COMPLETED':
+      case 'DELIVERED':
+      case 'PICKED_UP':
+        return StopStatus.completed;
       case 'SKIPPED':
+      case 'FAILED':
         return StopStatus.skipped;
-      case 'PENDING':
       default:
         return StopStatus.pending;
     }
   }
 }
 
+/// A single stop on the route.
+@immutable
 class RouteStop {
   const RouteStop({
-    required this.sequence,
+    required this.id,
+    required this.stopNumber,
     required this.stopType,
     required this.orderId,
     required this.orderNumber,
@@ -57,16 +74,23 @@ class RouteStop {
     required this.patientPhone,
     required this.pharmacyName,
     required this.address,
+    required this.latitude,
+    required this.longitude,
     required this.status,
     required this.statusLabel,
     required this.priority,
-    required this.distanceKmFromPreviousStop,
-    this.latitude,
-    this.longitude,
-    this.notes,
+    required this.distanceKm,
+    required this.notes,
   });
 
-  final int sequence;
+  /// Stable identity. The API doesn't send a dedicated stop id, so we derive a
+  /// unique one from sequence + orderId + type (an order appears twice: once as
+  /// pickup, once as drop).
+  final String id;
+
+  /// 1-based sequence number (== API `sequence`).
+  final int stopNumber;
+
   final StopType stopType;
   final String orderId;
   final String orderNumber;
@@ -74,155 +98,123 @@ class RouteStop {
   final String patientPhone;
   final String pharmacyName;
   final String address;
+  final double latitude;
+  final double longitude;
   final StopStatus status;
   final String statusLabel;
   final bool priority;
-  final double distanceKmFromPreviousStop;
-  final double? latitude;
-  final double? longitude;
-  final String? notes;
 
-  // -- Compatibility getters for the existing screen ----------------------
+  /// API `distanceKmFromPreviousStop`.
+  final double distanceKm;
 
-  /// The screen used `stop.id`; map it to the sequence-scoped order id so it
-  /// stays unique per row (an order has both a pickup and a drop).
-  String get id => '$orderId-${stopType.code}-$sequence';
+  final String notes;
 
-  /// The screen used `stop.stopNumber`.
-  int get stopNumber => sequence;
-
-  /// The screen showed `stop.scheduledTime` on the right; the API has no time,
-  /// so surface the pickup/drop label there instead.
-  String get scheduledTime => stopType.label;
-
-  bool get hasCoordinates => latitude != null && longitude != null;
+  bool get hasCoordinates => latitude != 0 && longitude != 0;
 
   factory RouteStop.fromJson(Map<String, dynamic> json) {
+    final seq = (json['sequence'] as num?)?.toInt() ?? 0;
+    final orderId = json['orderId']?.toString() ?? '';
+    final type = StopTypeX.fromApi(json['stopType']?.toString());
     return RouteStop(
-      sequence: (json['sequence'] as num?)?.toInt() ?? 0,
-      stopType: StopTypeX.fromCode(json['stopType'] as String?),
-      orderId: json['orderId'] as String? ?? '',
-      orderNumber: json['orderNumber'] as String? ?? '',
-      patientName: json['patientName'] as String? ?? '',
-      patientPhone: json['patientPhone'] as String? ?? '',
-      pharmacyName: json['pharmacyName'] as String? ?? '',
-      address: json['address'] as String? ?? '',
-      status: StopStatusX.fromCode(json['status'] as String?),
-      statusLabel: json['statusLabel'] as String? ?? '',
-      priority: json['priority'] as bool? ?? false,
-      distanceKmFromPreviousStop:
-          (json['distanceKmFromPreviousStop'] as num?)?.toDouble() ?? 0,
-      latitude: (json['latitude'] as num?)?.toDouble(),
-      longitude: (json['longitude'] as num?)?.toDouble(),
-      notes: json['notes'] as String?,
+      id: '$seq-$orderId-${type.name}',
+      stopNumber: seq,
+      stopType: type,
+      orderId: orderId,
+      orderNumber: json['orderNumber']?.toString() ?? '',
+      patientName: json['patientName']?.toString() ?? '',
+      patientPhone: json['patientPhone']?.toString() ?? '',
+      pharmacyName: json['pharmacyName']?.toString() ?? '',
+      address: json['address']?.toString() ?? '',
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+      status: StopStatusX.fromApi(json['status']?.toString()),
+      statusLabel: json['statusLabel']?.toString() ?? '',
+      priority: json['priority'] == true,
+      distanceKm:
+      (json['distanceKmFromPreviousStop'] as num?)?.toDouble() ?? 0,
+      notes: json['notes']?.toString() ?? '',
     );
   }
 
-  RouteStop copyWith({
-    int? sequence,
-    StopType? stopType,
-    String? orderId,
-    String? orderNumber,
-    String? patientName,
-    String? patientPhone,
-    String? pharmacyName,
-    String? address,
-    StopStatus? status,
-    String? statusLabel,
-    bool? priority,
-    double? distanceKmFromPreviousStop,
-    double? latitude,
-    double? longitude,
-    String? notes,
-  }) {
+  RouteStop copyWith({StopStatus? status}) {
     return RouteStop(
-      sequence: sequence ?? this.sequence,
-      stopType: stopType ?? this.stopType,
-      orderId: orderId ?? this.orderId,
-      orderNumber: orderNumber ?? this.orderNumber,
-      patientName: patientName ?? this.patientName,
-      patientPhone: patientPhone ?? this.patientPhone,
-      pharmacyName: pharmacyName ?? this.pharmacyName,
-      address: address ?? this.address,
+      id: id,
+      stopNumber: stopNumber,
+      stopType: stopType,
+      orderId: orderId,
+      orderNumber: orderNumber,
+      patientName: patientName,
+      patientPhone: patientPhone,
+      pharmacyName: pharmacyName,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
       status: status ?? this.status,
-      statusLabel: statusLabel ?? this.statusLabel,
-      priority: priority ?? this.priority,
-      distanceKmFromPreviousStop:
-          distanceKmFromPreviousStop ?? this.distanceKmFromPreviousStop,
-      latitude: latitude ?? this.latitude,
-      longitude: longitude ?? this.longitude,
-      notes: notes ?? this.notes,
+      statusLabel: statusLabel,
+      priority: priority,
+      distanceKm: distanceKm,
+      notes: notes,
     );
   }
 }
 
+/// The whole day's route.
+@immutable
 class TodayRoute {
   const TodayRoute({
     required this.driverId,
     required this.driverName,
+    required this.startLatitude,
+    required this.startLongitude,
+    required this.routeDate,
     required this.totalStops,
     required this.totalOrders,
     required this.estimatedDistanceKm,
     required this.stops,
-    this.startLatitude,
-    this.startLongitude,
-    this.routeDate,
   });
 
   final String driverId;
   final String driverName;
+  final double startLatitude;
+  final double startLongitude;
+  final DateTime? routeDate;
   final int totalStops;
   final int totalOrders;
   final double estimatedDistanceKm;
   final List<RouteStop> stops;
-  final double? startLatitude;
-  final double? startLongitude;
-  final DateTime? routeDate;
 
-  /// The screen showed `route.pickupTime` in the subheader. The API has no
-  /// pickup time, so expose the order count there instead.
-  String get pickupTime => '$totalOrders Orders';
+  /// Count of pickup stops — surfaced as "… Pickup" in the summary line.
+  int get pickupTime => stops.where((s) => s.stopType.isPickup).length;
 
   factory TodayRoute.fromJson(Map<String, dynamic> json) {
+    final stopsJson = (json['stops'] as List?) ?? const [];
     return TodayRoute(
-      driverId: json['driverId'] as String? ?? '',
-      driverName: json['driverName'] as String? ?? '',
-      totalStops: (json['totalStops'] as num?)?.toInt() ?? 0,
+      driverId: json['driverId']?.toString() ?? '',
+      driverName: json['driverName']?.toString() ?? '',
+      startLatitude: (json['startLatitude'] as num?)?.toDouble() ?? 0,
+      startLongitude: (json['startLongitude'] as num?)?.toDouble() ?? 0,
+      routeDate: DateTime.tryParse(json['routeDate']?.toString() ?? ''),
+      totalStops: (json['totalStops'] as num?)?.toInt() ?? stopsJson.length,
       totalOrders: (json['totalOrders'] as num?)?.toInt() ?? 0,
       estimatedDistanceKm:
-          (json['estimatedDistanceKm'] as num?)?.toDouble() ?? 0,
-      startLatitude: (json['startLatitude'] as num?)?.toDouble(),
-      startLongitude: (json['startLongitude'] as num?)?.toDouble(),
-      routeDate: json['routeDate'] == null
-          ? null
-          : DateTime.tryParse(json['routeDate'] as String),
-      stops: (json['stops'] as List<dynamic>? ?? [])
+      (json['estimatedDistanceKm'] as num?)?.toDouble() ?? 0,
+      stops: stopsJson
           .map((e) => RouteStop.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }
 
-  TodayRoute copyWith({
-    String? driverId,
-    String? driverName,
-    int? totalStops,
-    int? totalOrders,
-    double? estimatedDistanceKm,
-    List<RouteStop>? stops,
-    double? startLatitude,
-    double? startLongitude,
-    DateTime? routeDate,
-  }) {
+  TodayRoute copyWith({List<RouteStop>? stops}) {
     return TodayRoute(
-      driverId: driverId ?? this.driverId,
-      driverName: driverName ?? this.driverName,
-      totalStops: totalStops ?? this.totalStops,
-      totalOrders: totalOrders ?? this.totalOrders,
-      estimatedDistanceKm: estimatedDistanceKm ?? this.estimatedDistanceKm,
+      driverId: driverId,
+      driverName: driverName,
+      startLatitude: startLatitude,
+      startLongitude: startLongitude,
+      routeDate: routeDate,
+      totalStops: totalStops,
+      totalOrders: totalOrders,
+      estimatedDistanceKm: estimatedDistanceKm,
       stops: stops ?? this.stops,
-      startLatitude: startLatitude ?? this.startLatitude,
-      startLongitude: startLongitude ?? this.startLongitude,
-      routeDate: routeDate ?? this.routeDate,
     );
   }
 }

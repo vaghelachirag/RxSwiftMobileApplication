@@ -5,6 +5,7 @@ import 'package:rxswift/features/today_route/provider/today_route_provider.dart'
 
 import '../../theme/app_theme.dart';
 import '../navigation/navigation_screen.dart';
+import '../route_map/screen/route_map_screen.dart';
 import 'model/route_model.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ class TodayRouteScreen extends ConsumerWidget {
               Navigator.of(context).push(
                 PageRouteBuilder(
                   pageBuilder: (_, __, ___) =>
-                  const NavigationMapScreen(),
+                  const RouteMapScreen(),
                   transitionsBuilder: (_, anim, __, child) =>
                       FadeTransition(opacity: anim, child: child),
                   transitionDuration:
