@@ -122,7 +122,7 @@ class _AddTile extends StatelessWidget {
           color: AppColors.infoBg,
           borderRadius: BorderRadius.circular(AppRadius.field),
           border: Border.all(
-            color: AppColors.primary.withOpacity(0.35),
+            color: AppColors.primary.withValues(alpha: 0.35),
             width: 1.5,
           ),
         ),

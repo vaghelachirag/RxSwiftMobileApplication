@@ -71,9 +71,6 @@ class DeliveryRepository {
   // ---------------------------------------------------------------------------
   // Location
   // ---------------------------------------------------------------------------
-  /// Returns the current device location with a best-effort reverse-geocoded
-  /// address. Throws [LocationException] if services are off or permission is
-  /// denied.
   Future<CaptureLocation> getCurrentLocation() async {
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw const LocationException('Location services are turned off.');
@@ -128,10 +125,7 @@ class DeliveryRepository {
     );
   }
 
-  Future<String> stampLocationOnImage({
-    required String photoPath,
-    required CaptureLocation location,
-  }) async {
+  Future<String> stampLocationOnImage({required String photoPath, required CaptureLocation location,}) async {
     final bytes = await File(photoPath).readAsBytes();
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return photoPath; // fall back to original

@@ -25,7 +25,7 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
     final controller = ref.read(deliveryControllerProvider.notifier);
     final order = ref.watch(deliveryOrderProvider);
 
-    // Surface success as a one-off snackbar.
+    // Surface success as a one-off SnackBar.
     ref.listen<DeliveryState>(deliveryControllerProvider, (prev, next) {
       if (prev?.status != DeliveryStatus.uploadSuccess &&
           next.status == DeliveryStatus.uploadSuccess) {

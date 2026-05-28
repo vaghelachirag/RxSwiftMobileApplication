@@ -10,11 +10,6 @@ enum LocationCheckResult {
   permissionPermanentlyDenied,
 }
 
-/// Wraps Geolocator with the exact behaviour our navigation flow expects:
-///   1. Verify location service is enabled
-///   2. Verify (and if needed, request) permission
-///   3. Provide single-shot current location
-///   4. Provide a live stream of location updates with sensible throttling
 class LocationService {
   /// Performs both the service-enabled check and the permission check.
   Future<LocationCheckResult> ensureLocationAvailable() async {
@@ -34,11 +29,6 @@ class LocationService {
     return LocationCheckResult.ready;
   }
 
-  /// Single-shot current location. Call only after [ensureLocationAvailable]
-  /// returns [LocationCheckResult.ready].
-  ///
-  /// Uses the [desiredAccuracy] / [timeLimit] signature, which is supported
-  /// across geolocator 7.x – 11.x.
   Future<LatLng> getCurrentLocation() async {
     final position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
@@ -47,8 +37,6 @@ class LocationService {
     return LatLng(position.latitude, position.longitude);
   }
 
-  /// Live updates. We throttle by distance (10 m) so we don't hammer the UI
-  /// or trigger Directions API calls on every GPS tick.
   Stream<Position> liveLocationStream({int distanceFilterMeters = 10}) {
     final settings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
@@ -57,7 +45,6 @@ class LocationService {
     return Geolocator.getPositionStream(locationSettings: settings);
   }
 
-  /// Helper to compute distance in metres between two coordinates.
   double distanceBetweenMeters(LatLng a, LatLng b) {
     return Geolocator.distanceBetween(
       a.latitude,

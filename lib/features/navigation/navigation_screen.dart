@@ -194,7 +194,7 @@ class _MapViewState extends ConsumerState<_MapView> {
         anchor: const Offset(0.5, 0.5),
         flat: true,
         rotation: widget.state.driverHeading ?? 0,
-        zIndex: 5,
+        zIndexInt: 5,
       );
     }
 
@@ -307,7 +307,7 @@ class _TopHeader extends StatelessWidget {
                         width: 32,
                         height: 32,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.25),
+                          color:  Colors.white.withAlpha(64),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
@@ -335,7 +335,7 @@ class _TopHeader extends StatelessWidget {
                               style: TextStyle(
                                 fontFamily: 'Poppins',
                                 fontSize: 12,
-                                color: Colors.white.withOpacity(0.85),
+                                color: Colors.white.withValues(alpha: 0.85),
                               ),
                             ),
                           ],
@@ -851,7 +851,9 @@ class _StopDot extends StatelessWidget {
         width: 28,
         height: 28,
         decoration: BoxDecoration(
-          color: color.withOpacity(isCurrent ? 0.15 : isPast ? 0.12 : 0.06),
+          color: color.withValues(
+            alpha: isCurrent ? 0.15 : isPast ? 0.12 : 0.06,
+          ),
           shape: BoxShape.circle,
           border: Border.all(color: color, width: 2),
         ),

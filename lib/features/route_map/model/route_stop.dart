@@ -16,14 +16,6 @@ extension StopTypeX on StopType {
   String get badgeLabel => isPickup ? 'Pickup' : 'Drop';
 }
 
-/// ─────────────────────────────────────────────────────────────
-///  RouteStop — one entry on the delivery boy's route.
-///
-///  Carries the real-world geo fields (latitude/longitude) AND a
-///  normalized map position (mapX / mapY in 0..1) so the prototype's
-///  custom map canvas can place markers without a live Google Map.
-///  When you wire up real maps, drop mapX/mapY and use lat/lng.
-/// ─────────────────────────────────────────────────────────────
 @immutable
 class RouteStop {
   const RouteStop({

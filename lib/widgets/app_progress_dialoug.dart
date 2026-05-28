@@ -6,10 +6,7 @@ import 'rxswift_logo.dart';
 
 abstract class AppProgressDialog {
 
-  static void show(
-      BuildContext context, {
-        String? message,
-      }) {
+  static void show(BuildContext context, {String? message,}) {
     showDialog<void>(
       context: context,
       barrierDismissible: false,

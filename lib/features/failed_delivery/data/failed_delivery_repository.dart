@@ -1,9 +1,3 @@
-// ============================================================================
-// data/failed_delivery_repository.dart
-// Camera capture (camera-only), multipart submit via Dio, connectivity
-// checks, and local persistence of a pending report for offline retry.
-// ============================================================================
-
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -68,8 +62,7 @@ class FailedDeliveryRepository {
   final ImagePicker _picker;
   final Connectivity _connectivity;
 
-  static const String _submitUrl =
-      'https://api.example.com/v1/deliveries/failed';
+  static const String _submitUrl = 'https://api.example.com/v1/deliveries/failed';
 
   static const String _pendingKey = 'pending_failed_delivery_report';
 
@@ -139,9 +132,7 @@ class FailedDeliveryRepository {
       if (response.statusCode == null ||
           response.statusCode! < 200 ||
           response.statusCode! >= 300) {
-        throw SubmitFailedException(
-          'Server responded with ${response.statusCode}.',
-        );
+        throw SubmitFailedException('Server responded with ${response.statusCode}.',);
       }
 
       await clearPending();

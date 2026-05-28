@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../model/navigation/navigation_model.dart';
 
 
+
 /// Thrown when the Directions API call fails or returns an error status.
 class DirectionsException implements Exception {
   final String message;

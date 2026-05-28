@@ -4,8 +4,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-/// Generates custom map markers using Canvas (no asset files required).
-/// Cached so we only build each marker style once per app session.
 class NavigationMarkerFactory {
   NavigationMarkerFactory._();
   static final instance = NavigationMarkerFactory._();
@@ -74,7 +72,7 @@ class NavigationMarkerFactory {
     return _driverCached!;
   }
 
-  /// The bold current destination pin (Swiggy red, large).
+  /// The bold current destination pin
   Future<BitmapDescriptor> currentStopMarker(
       int stopNumber, {
         double devicePixelRatio = 3,

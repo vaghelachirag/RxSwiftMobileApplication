@@ -1,8 +1,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Lightweight wrapper around [Connectivity].
-/// Inject this wherever you need to guard an API call behind a connectivity check.
+
 class ConnectivityService {
   const ConnectivityService(this._connectivity);
   final Connectivity _connectivity;

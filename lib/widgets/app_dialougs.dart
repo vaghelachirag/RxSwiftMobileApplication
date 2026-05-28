@@ -29,7 +29,7 @@ class AppDialogs {
     );
   }
 
-  // ── Snackbar (lighter-weight) ────────────────────────────────
+  // ── SnackBar (lighter-weight) ────────────────────────────────
 
   static void showSnackBar(
       BuildContext context,

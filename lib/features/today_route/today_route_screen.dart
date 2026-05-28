@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/features/today_route/provider/today_route_provider.dart';
+import 'package:rxswift/features/today_route/route_map/screen/route_map_screen.dart';
 
 import '../../theme/app_theme.dart';
 import '../navigation/navigation_screen.dart';
-import '../route_map/screen/route_map_screen.dart';
+import '../route_map/screen/route_map_screen.dart' hide RouteMapScreen;
 import 'model/route_model.dart';
 
 // ─────────────────────────────────────────────────────────────
