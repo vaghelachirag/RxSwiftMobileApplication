@@ -19,6 +19,15 @@ class RouteColors {
   static const tealDark = Color(0xFF0F6E56);
   static const tealDarker = Color(0xFF085041);
 
+  // inside class RouteColors, anywhere after the existing colors
+  static const primary = teal;
+  static const success = greenMid;
+  static const accentGreen = greenMid;
+  static const danger = red;
+  static const cardBorder = borderTertiary;
+  static const background = surfaceAlt;
+  static const disabledFill = Color(0xFFE3E0D8);
+
   // Pickup (green)
   static const green = Color(0xFF3B6D11);
   static const greenLight = Color(0xFFEAF3DE);
@@ -56,6 +65,17 @@ class RouteColors {
   static const mapRoad = Color(0xFFFFFFFF);
   static const mapBlock = Color(0x59FFFFFF); // ~0.35 white
 }
+/// Spacing scale (mirrors AppSpacing so the form screens read consistently).
+class RouteSpacing {
+  RouteSpacing._();
+  static const xs = 4.0;
+  static const sm = 8.0;
+  static const md = 12.0;
+  static const lg = 16.0;
+  static const xl = 24.0;
+  static const xxl = 32.0;
+}
+
 
 class RouteRadius {
   RouteRadius._();
@@ -100,6 +120,22 @@ class RouteShadows {
 class RouteText {
   RouteText._();
   static const _family = 'Poppins';
+
+
+  static TextStyle button(Color color) => TextStyle(
+    fontFamily: 'Poppins',
+    fontSize: 16,
+    fontWeight: FontWeight.w700,
+    color: color,
+  );
+
+  static TextStyle appBar(Color color) => TextStyle(
+    fontFamily: 'Poppins',
+    fontSize: 17,
+    fontWeight: FontWeight.w600,
+    color: color,
+  );
+
 
   static TextStyle display(Color color) => TextStyle(
     fontFamily: _family,

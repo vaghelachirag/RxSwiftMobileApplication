@@ -1,17 +1,36 @@
-
+// ============================================================================
+// lib/features/delivery_confirm/presentation/screens/delivery_confirmation_screen.dart
+//
+// RESTYLED to match route_map_screen.dart — teal AppBar, RouteColors /
+// RouteSpacing / RouteRadius / RouteShadows / RouteText tokens, same rhythm.
+//
+// Only styling changed in THIS file. All providers, controllers, and the
+// composed child widgets (OrderSummaryCard, InstructionCard, CameraCaptureArea,
+// LocationInfoCard, UploadStatusBanner) are wired exactly as before.
+//
+// ⚠️ PARTIAL COVERAGE: those child widgets still use AppColors/AppSpacing
+//    inside themselves. Send their source files if you want them restyled too.
+//
+// FUNCTIONAL TWEAK: the success "Done" button now calls `maybePop(true)`.
+// route_map_screen.dart already checks this return value to advance the stop
+// after a confirmed delivery. If you don't want that signal, change the line
+// back to `Navigator.of(context).maybePop()`.
+// ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/features/delivery_confirm/provider/delivery_confirmation_provider.dart';
 
-import '../../theme/app_theme.dart';
+// Theme: route_map design tokens. Adjust ONLY if your route_map folder lives
+// somewhere other than features/today_route/route_map/theme/.
+
 import '../../widgets/camera_capture_area.dart';
 import '../../widgets/instruction_card.dart';
 import '../../widgets/location_info_card.dart';
 import '../../widgets/order_summary_card.dart';
 import '../../widgets/upload_status_banner.dart';
+import '../route_map/theme/route_map_theme.dart';
 import 'domain/delivery_state.dart';
-
 
 class DeliveryConfirmationScreen extends ConsumerWidget {
   const DeliveryConfirmationScreen({super.key});
@@ -22,65 +41,77 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
     final controller = ref.read(deliveryControllerProvider.notifier);
     final order = ref.watch(deliveryOrderProvider);
 
-    // Surface success as a one-off SnackBar.
+    // Surface success as a one-off SnackBar — themed.
     ref.listen<DeliveryState>(deliveryControllerProvider, (prev, next) {
       if (prev?.status != DeliveryStatus.uploadSuccess &&
           next.status == DeliveryStatus.uploadSuccess) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(
-              backgroundColor: AppColors.success,
+            SnackBar(
+              backgroundColor: RouteColors.tealDark,
               behavior: SnackBarBehavior.floating,
-              content: Text('Delivery confirmed successfully.'),
+              content: Text(
+                'Delivery confirmed successfully.',
+                style: RouteText.body(Colors.white),
+              ),
             ),
           );
       }
     });
 
     return Scaffold(
+      backgroundColor: RouteColors.background,
       appBar: AppBar(
+        backgroundColor: RouteColors.tealDark,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+          icon: const Icon(Icons.arrow_back_rounded, size: 22),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('Delivery Confirmation'),
+        title: Text(
+          'Delivery Confirmation',
+          style: RouteText.appBar(Colors.white),
+        ),
       ),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             // Responsive max width so it looks good on large phones / tablets.
-            final maxW = constraints.maxWidth > 520 ? 520.0 : constraints.maxWidth;
+            final maxW =
+            constraints.maxWidth > 520 ? 520.0 : constraints.maxWidth;
             return Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: maxW),
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    AppSpacing.lg,
-                    AppSpacing.lg,
-                    AppSpacing.xxl,
+                    RouteSpacing.lg,
+                    RouteSpacing.lg,
+                    RouteSpacing.lg,
+                    RouteSpacing.xxl,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       OrderSummaryCard(order: order),
-                      const SizedBox(height: AppSpacing.lg),
+                      const SizedBox(height: RouteSpacing.lg),
                       const InstructionCard(),
-                      const SizedBox(height: AppSpacing.lg),
+                      const SizedBox(height: RouteSpacing.lg),
                       CameraCaptureArea(
                         state: state,
                         onOpenCamera: controller.openCamera,
                         onRetake: controller.retakePhoto,
                       ),
                       if (state.hasPhoto) ...[
-                        const SizedBox(height: AppSpacing.lg),
+                        const SizedBox(height: RouteSpacing.lg),
                         LocationInfoCard(
                           state: state,
                           onRetryLocation: controller.retryLocation,
                         ),
                       ],
-                      const SizedBox(height: AppSpacing.lg),
+                      const SizedBox(height: RouteSpacing.lg),
                       UploadStatusBanner(
                         state: state,
                         onRetry: state.isOfflinePending
@@ -99,7 +130,8 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
         state: state,
         onOpenCamera: controller.openCamera,
         onComplete: controller.uploadAndComplete,
-        onDone: () => Navigator.of(context).maybePop(),
+        // Returns `true` so route_map_screen can advance the stop on return.
+        onDone: () => Navigator.of(context).maybePop(true),
       ),
     );
   }
@@ -125,8 +157,8 @@ class _BottomActionBar extends StatelessWidget {
       return _BarWrapper(
         child: _PrimaryButton(
           label: 'Done',
-          icon: Icons.check,
-          color: AppColors.accentGreen,
+          icon: Icons.check_rounded,
+          color: RouteColors.accentGreen,
           onPressed: onDone,
         ),
       );
@@ -137,8 +169,8 @@ class _BottomActionBar extends StatelessWidget {
       return _BarWrapper(
         child: _PrimaryButton(
           label: 'Take Photo',
-          icon: Icons.camera_alt,
-          color: AppColors.primary,
+          icon: Icons.camera_alt_rounded,
+          color: RouteColors.primary,
           // Disabled while the camera is opening to prevent double launch.
           onPressed: state.status == DeliveryStatus.cameraOpening
               ? null
@@ -147,16 +179,14 @@ class _BottomActionBar extends StatelessWidget {
       );
     }
 
-    // Photo captured → "Upload & Complete Delivery".
-    // Disabled while uploading.
+    // Photo captured → "Upload & Complete Delivery". Disabled while uploading.
     final bool enabled = state.canComplete;
     return _BarWrapper(
       child: _PrimaryButton(
-        label: state.isUploading
-            ? 'Uploading…'
-            : 'Upload & Complete Delivery',
-        icon: state.isUploading ? null : Icons.check_circle_outline,
-        color: AppColors.accentGreen,
+        label:
+        state.isUploading ? 'Uploading…' : 'Upload & Complete Delivery',
+        icon: state.isUploading ? null : Icons.check_circle_outline_rounded,
+        color: RouteColors.accentGreen,
         loading: state.isUploading,
         onPressed: enabled ? onComplete : null,
       ),
@@ -174,10 +204,11 @@ class _BarWrapper extends StatelessWidget {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.md),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(top: BorderSide(color: AppColors.cardBorder)),
+            RouteSpacing.lg, RouteSpacing.md, RouteSpacing.lg, RouteSpacing.md),
+        decoration: BoxDecoration(
+          color: RouteColors.surface,
+          border: Border(top: BorderSide(color: RouteColors.cardBorder)),
+          boxShadow: RouteShadows.sheet,
         ),
         child: child,
       ),
@@ -209,11 +240,12 @@ class _PrimaryButton extends StatelessWidget {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
-          disabledBackgroundColor: const Color(0xFFCBD5DF),
+          disabledBackgroundColor: RouteColors.disabledFill,
           foregroundColor: Colors.white,
+          disabledForegroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.button),
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
         child: Row(
@@ -230,14 +262,9 @@ class _PrimaryButton extends StatelessWidget {
               )
             else if (icon != null)
               Icon(icon, size: 20),
-            if (loading || icon != null) const SizedBox(width: AppSpacing.sm),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            if (loading || icon != null)
+              const SizedBox(width: RouteSpacing.sm),
+            Text(label, style: RouteText.button(Colors.white)),
           ],
         ),
       ),

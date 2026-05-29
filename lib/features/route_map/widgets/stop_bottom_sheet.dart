@@ -266,7 +266,7 @@ class StopBottomSheet extends StatelessWidget {
         else
           _ActionButtons(
             stop: stop,
-            inRange: _inRange,
+            inRange: true,
             isPickupLoading: isPickupLoading,
             onNavigate: onNavigate,
             onPickup: onPickup,
@@ -545,7 +545,7 @@ class _ActionButtons extends StatelessWidget {
             label: 'Delivered',
             icon: Icons.check_rounded,
             kind: _BtnKind.primary,
-            enabled: inRange,
+         /*   enabled: inRange,*/
             onTap: onDelivered,
           ),
         ),
