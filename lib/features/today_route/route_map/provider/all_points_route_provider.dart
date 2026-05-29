@@ -1,17 +1,4 @@
-// ============================================================================
-// features/today_route/route_map/provider/all_points_route_provider.dart
-//
-// ADDITIVE — does not change any existing code.
-//
-// Fetches the REAL road route through ALL stops (start → stop1 → stop2 → … →
-// stopN) using the SAME DirectionsService the navigation engine uses, then
-// concatenates every leg's polyline into one continuous road route. This is
-// what lets route_map_screen draw the actual on-road path for all points,
-// like navigation_screen.dart does (which only routes one leg at a time).
-//
-// Reuses `directionsServiceProvider` from the navigation engine so there's a
-// single Directions wiring. Confirm the two engine import paths below.
-// ============================================================================
+
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';

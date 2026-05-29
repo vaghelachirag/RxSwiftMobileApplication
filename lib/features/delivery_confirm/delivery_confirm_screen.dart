@@ -1,7 +1,4 @@
-// ============================================================================
-// presentation/screens/delivery_confirmation_screen.dart
-// Main screen — wires providers, widgets, and the bottom action button.
-// ============================================================================
+
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

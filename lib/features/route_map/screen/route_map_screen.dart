@@ -1,26 +1,18 @@
 // ============================================================================
 // features/today_route/route_map/screen/route_map_screen.dart
 //
-// Route Map Navigation Screen — now backed by the REAL Today's Route API.
+// Route Map Navigation Screen — backed by the REAL Today's Route API.
 //
 // Data source : todayRouteProvider (loaded by TodayRouteScreen before this
 //               screen is pushed). We read the live route + stops from it.
 // UI state    : routeMapUiProvider (selected stop, sheet open/closed).
-// Actions     : markStopCompleted / openInGoogleMaps on TodayRouteNotifier.
+// Actions     : markStopCompleted / openInGoogleMaps / pickupOrder on
+//               TodayRouteNotifier.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Real destination screens.
-// NOTE: confirm these two package paths against your project. The delivery
-// provider lives at `package:rxswift/features/delivery_confirm/provider/...`,
-// so the screen is assumed to sit under that feature's presentation folder.
-// If your paths differ, fix ONLY these two import lines.
-// Old GPS navigation engine screen (unchanged). Confirm this path against your
-// project — navigation_screen.dart imports
-// `package:rxswift/features/navigation/provider/navigation_provider.dart`,
-// so the screen sits under that feature.
 import '../../delivery_confirm/delivery_confirm_screen.dart';
 import '../../failed_delivery/presentation/screens/failed_delivery_screen.dart';
 import '../../navigation/navigation_screen.dart';
@@ -45,7 +37,9 @@ class RouteMapScreen extends ConsumerWidget {
       backgroundColor: RouteColors.tealDark,
       body: switch (routeState.loadStatus) {
         RouteLoadStatus.loading || RouteLoadStatus.idle =>
-        const _CenteredOnTeal(child: CircularProgressIndicator(color: Colors.white)),
+        const _CenteredOnTeal(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
         RouteLoadStatus.error => _ErrorView(
           message: routeState.errorMessage ?? 'Could not load your route.',
           onRetry: () => ref.read(todayRouteProvider.notifier).refresh(),
@@ -79,7 +73,6 @@ class _LoadedBody extends ConsumerWidget {
 
     Future<void> completeAndAdvance(RouteStop s) async {
       routeNotifier.markStopCompleted(s.id);
-      // After the data updates, move selection to the new in-progress stop.
       uiNotifier.syncSelectionToProgress();
     }
 
@@ -113,15 +106,43 @@ class _LoadedBody extends ConsumerWidget {
                   expanded: ui.sheetExpanded,
                   canGoPrev: selectedIndex > 0,
                   canGoNext: selectedIndex < route.stops.length - 1,
+
+                  // Spinner + disabled state for the Pickup button.
+                  isPickupLoading: routeState.isPickupLoading &&
+                      routeState.activePickupOrderId == stop.id,
+
                   onToggle: uiNotifier.toggleSheet,
                   onPrev: uiNotifier.prevStop,
                   onNext: uiNotifier.nextStop,
                   onNavigate: () =>
                       _startTurnByTurnNavigation(context, route.stops),
+
+                  // ── Pickup: real API call, advance only on success ──
                   onPickup: () async {
-                    await _showPickupSuccess(context);
-                    await completeAndAdvance(stop);
+                    if (stop.id.isEmpty) {
+                      _toast(context,
+                          'Invalid order. Please refresh and try again.');
+                      return;
+                    }
+
+                    final success = await ref
+                        .read(todayRouteProvider.notifier)
+                        .pickupOrder(stop.id);
+
+                    if (!context.mounted) return;
+
+                    if (success) {
+                      await _showPickupSuccess(context);
+                      if (!context.mounted) return;
+                      await completeAndAdvance(stop);
+                    } else {
+                      final errorMessage =
+                          ref.read(todayRouteProvider).pickupErrorMessage ??
+                              'Unable to pickup order. Please try again.';
+                      _toast(context, errorMessage);
+                    }
                   },
+
                   onDelivered: () => _openDeliveryConfirmation(
                     context,
                     stop,
@@ -162,14 +183,6 @@ class _LoadedBody extends ConsumerWidget {
   }
 
   // ── Navigate → real GPS turn-by-turn engine, one stop at a time ──
-  //
-  // Pushes the existing NavigationMapScreen (live GPS + Google Directions,
-  // navigates to the current stop and auto-advances on arrival) but wraps it
-  // in a ProviderScope that overrides the engine's `navigationProvider` so it
-  // runs against the REAL route stops instead of the engine's demo data.
-  //
-  // The old screen and old provider are untouched; the override does the
-  // seeding via navigation_bridge.dart.
   void _startTurnByTurnNavigation(
       BuildContext context, List<RouteStop> stops) {
     Navigator.of(context).push(
@@ -183,49 +196,22 @@ class _LoadedBody extends ConsumerWidget {
   }
 
   // ── Delivered → real DeliveryConfirmationScreen ───────────────
-  //
-  // Both destination screens read their own order from their own providers
-  // (deliveryOrderProvider / failedDeliveryOrderProvider) and take no
-  // constructor args, so we just push them.
-  //
-  // 👉 INJECT THE SELECTED STOP HERE if your order providers need to be told
-  //    which stop is active. For example, if you expose a setter:
-  //
-  //      ref.read(deliveryOrderProvider.notifier).setFromStop(stop);
-  //
-  //    add that call right before the push (uncomment + adapt to your API).
   Future<void> _openDeliveryConfirmation(
       BuildContext context,
       RouteStop stop, {
         required VoidCallback onConfirmed,
       }) async {
-    // ref.read(deliveryOrderProvider.notifier).setFromStop(stop); // ← your hook
-
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const DeliveryConfirmationScreen()),
     );
-
-    // Advance the route only when the delivery was actually completed.
-    //
-    // For this to fire, the confirmation screen must return `true` when done.
-    // In your delivery_confirmation_screen.dart, change the success "Done"
-    // button from:
-    //     onDone: () => Navigator.of(context).maybePop(),
-    // to:
-    //     onDone: () => Navigator.of(context).maybePop(true),
-    //
-    // If the driver just backs out, it returns null and the stop is untouched.
     if (result == true) onConfirmed();
   }
 
   // ── Failed → real FailedDeliveryScreen ────────────────────────
   Future<void> _openFailedDelivery(BuildContext context, RouteStop stop) async {
-    // ref.read(failedDeliveryOrderProvider.notifier).setFromStop(stop); // ← your hook
-
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const FailedDeliveryScreen()),
     );
-    // Optionally mark the stop as skipped/failed here based on the result.
   }
 }
 

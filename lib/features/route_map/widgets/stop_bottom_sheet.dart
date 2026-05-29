@@ -1,15 +1,21 @@
+// ============================================================================
+// features/today_route/route_map/widgets/stop_bottom_sheet.dart
+//
+// Bottom sheet showing the selected stop (real API-backed RouteStop).
+//
+// Collapsed → peek row (number, name, badge, primary action).
+// Expanded  → full details + 1 km warning gate + action buttons.
+//
+// Pickup button shows a spinner and disables itself while the pickup API is
+// in flight. The screen tells us via `isPickupLoading`.
+// ============================================================================
+
 import 'package:flutter/material.dart';
 
 import '../../today_route/model/route_model.dart';
 import '../theme/route_map_theme.dart';
 import 'route_map_atoms.dart';
 
-/// ─────────────────────────────────────────────────────────────
-///  Bottom sheet showing the selected stop (real API-backed RouteStop).
-///
-///  Collapsed → peek row (number, name, badge, primary action).
-///  Expanded  → full details + 1 km warning gate + action buttons.
-/// ─────────────────────────────────────────────────────────────
 class StopBottomSheet extends StatelessWidget {
   const StopBottomSheet({
     super.key,
@@ -25,6 +31,7 @@ class StopBottomSheet extends StatelessWidget {
     required this.onPickup,
     required this.onDelivered,
     required this.onFailed,
+    this.isPickupLoading = false,
   });
 
   final RouteStop stop;
@@ -39,6 +46,10 @@ class StopBottomSheet extends StatelessWidget {
   final VoidCallback onPickup;
   final VoidCallback onDelivered;
   final VoidCallback onFailed;
+
+  /// True while the pickup API is in flight for THIS stop. Drives the
+  /// Pickup button's spinner + disabled state.
+  final bool isPickupLoading;
 
   /// 1 km action gate keys off the per-leg distance from the API.
   bool get _inRange => stop.distanceKm <= 1.0;
@@ -133,6 +144,7 @@ class StopBottomSheet extends StatelessWidget {
           _CompactActionButton(
             stop: stop,
             inRange: _inRange,
+            isPickupLoading: isPickupLoading,
             onPickup: onPickup,
             onDelivered: onDelivered,
           ),
@@ -255,6 +267,7 @@ class StopBottomSheet extends StatelessWidget {
           _ActionButtons(
             stop: stop,
             inRange: _inRange,
+            isPickupLoading: isPickupLoading,
             onNavigate: onNavigate,
             onPickup: onPickup,
             onDelivered: onDelivered,
@@ -387,7 +400,8 @@ class _DetailRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (label != null)
-                Text(label!, style: RouteText.label(RouteColors.textSecondary)),
+                Text(label!,
+                    style: RouteText.label(RouteColors.textSecondary)),
               Text(
                 value,
                 style: TextStyle(
@@ -484,10 +498,12 @@ class _ActionButtons extends StatelessWidget {
     required this.onPickup,
     required this.onDelivered,
     required this.onFailed,
+    this.isPickupLoading = false,
   });
 
   final RouteStop stop;
   final bool inRange;
+  final bool isPickupLoading;
   final VoidCallback onNavigate;
   final VoidCallback onPickup;
   final VoidCallback onDelivered;
@@ -509,10 +525,12 @@ class _ActionButtons extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: _Btn(
-              label: 'Order Pickup',
+              label: isPickupLoading ? 'Picking up…' : 'Order Pickup',
               icon: Icons.inventory_2_rounded,
               kind: _BtnKind.primary,
-              enabled: inRange,
+              enabled: !isPickupLoading,
+             /* enabled: inRange && !isPickupLoading,*/
+              loading: isPickupLoading,
               onTap: onPickup,
             ),
           ),
@@ -552,10 +570,12 @@ class _CompactActionButton extends StatelessWidget {
     required this.inRange,
     required this.onPickup,
     required this.onDelivered,
+    this.isPickupLoading = false,
   });
 
   final RouteStop stop;
   final bool inRange;
+  final bool isPickupLoading;
   final VoidCallback onPickup;
   final VoidCallback onDelivered;
 
@@ -566,11 +586,13 @@ class _CompactActionButton extends StatelessWidget {
           color: RouteColors.teal, size: 28);
     }
     final isPickup = stop.stopType.isPickup;
+    final pickupBusy = isPickup && isPickupLoading;
     return _Btn(
-      label: isPickup ? 'Pickup' : 'Deliver',
+      label: isPickup ? (pickupBusy ? 'Pickup…' : 'Pickup') : 'Deliver',
       icon: isPickup ? Icons.inventory_2_rounded : Icons.check_rounded,
       kind: _BtnKind.primary,
-      enabled: inRange,
+      enabled: inRange && !pickupBusy,
+      loading: pickupBusy,
       compact: true,
       onTap: isPickup ? onPickup : onDelivered,
     );
@@ -587,6 +609,7 @@ class _Btn extends StatelessWidget {
     required this.onTap,
     this.enabled = true,
     this.compact = false,
+    this.loading = false,
   });
 
   final String label;
@@ -595,6 +618,7 @@ class _Btn extends StatelessWidget {
   final VoidCallback onTap;
   final bool enabled;
   final bool compact;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -638,7 +662,17 @@ class _Btn extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 17, color: fg),
+                if (loading)
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(fg),
+                    ),
+                  )
+                else
+                  Icon(icon, size: 17, color: fg),
                 const SizedBox(width: 6),
                 Text(
                   label,

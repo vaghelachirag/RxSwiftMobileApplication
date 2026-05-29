@@ -1,41 +1,31 @@
 // ============================================================================
-// data/repository/route_repository.dart  (+ impl)
-// Thin repository over the datasource. Mirrors AuthRepository/Impl.
+// lib/features/today_route/data/route_repository.dart
+//
+// Thin pass-through layer between the notifier and the datasource. Exists so
+// the notifier never imports `dio`/`api_result` plumbing details directly and
+// so swapping the datasource (e.g. for a fake in tests) is one provider
+// override away.
 // ============================================================================
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_result.dart';
-import '../../../uttils/app_constants.dart';
 import '../model/route_model.dart';
 import 'route_remote_datasource.dart';
 
-abstract class RouteRepository {
-  Future<ApiResult<TodayRoute>> getTodayRoute();
-  Future<ApiResult<bool>> updateDriverStatus({String status});
-}
-
-class RouteRepositoryImpl implements RouteRepository {
-  const RouteRepositoryImpl({required RouteRemoteDatasource datasource})
-      : _datasource = datasource;
-
+class RouteRepository {
+  RouteRepository(this._datasource);
   final RouteRemoteDatasource _datasource;
 
-  @override
-  Future<ApiResult<TodayRoute>> getTodayRoute() {
-    return _datasource.getTodayRoute();
-  }
+  Future<ApiResult<TodayRoute>> getTodayRoute() => _datasource.getTodayRoute();
 
-  @override
-  Future<ApiResult<bool>> updateDriverStatus({String status = ApiConstants.driverActiveStatus}) {
-    return _datasource.updateDriverStatus(status: status);
-  }
+  Future<ApiResult<bool>> updateDriverStatus({required String status}) =>
+      _datasource.updateDriverStatus(status: status);
+
+  Future<ApiResult<bool>> pickupOrder({required String orderId}) =>
+      _datasource.pickupOrder(orderId: orderId);
 }
 
-// ── Provider ──────────────────────────────────────────────────
-
-final routeRepositoryProvider = Provider<RouteRepository>((ref) {
-  return RouteRepositoryImpl(
-    datasource: ref.watch(routeRemoteDatasourceProvider),
-  );
-});
+final routeRepositoryProvider = Provider<RouteRepository>(
+      (ref) => RouteRepository(ref.watch(routeRemoteDatasourceProvider)),
+);

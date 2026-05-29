@@ -16,7 +16,6 @@ import 'package:rxswift/features/today_route/model/route_model.dart';
 import '../../../delivery_confirm/delivery_confirm_screen.dart';
 import '../../../failed_delivery/presentation/screens/failed_delivery_screen.dart';
 import '../../../navigation/navigation_screen.dart';
-import '../../../route_map/model/route_stop.dart' hide RouteStop;
 import '../../../route_map/navigation_bridge/navigation_bridge.dart';
 import '../../../route_map/provider/route_map_provider.dart';
 import '../../../route_map/theme/route_map_theme.dart';
@@ -108,15 +107,35 @@ class _LoadedBody extends ConsumerWidget {
                   onNavigate: () =>
                       _startTurnByTurnNavigation(context, route.stops.cast<RouteStop>()),
                   onPickup: () async {
-                    await _showPickupSuccess(context);
-                    await completeAndAdvance(stop as RouteStop);
+                    if (stop.id.isEmpty) {
+                      _toast(context,
+                          'Invalid order. Please refresh and try again.');
+                      return;
+                    }
+
+                    final success = await ref
+                        .read(todayRouteProvider.notifier)
+                        .pickupOrder(stop.orderId);
+
+                    if (!context.mounted) return;
+
+                    if (success) {
+                      await _showPickupSuccess(context);
+                      if (!context.mounted) return;
+                      await completeAndAdvance(stop);
+                    } else {
+                      final errorMessage =
+                          ref.read(todayRouteProvider).pickupErrorMessage ??
+                              'Unable to pickup order. Please try again.';
+                      _toast(context, errorMessage);
+                    }
                   },
                   onDelivered: () => _openDeliveryConfirmation(
                     context,
-                    stop as RouteStop,
-                    onConfirmed: () => completeAndAdvance(stop as RouteStop),
+                    stop,
+                    onConfirmed: () => completeAndAdvance(stop),
                   ),
-                  onFailed: () => _openFailedDelivery(context, stop as RouteStop),
+                  onFailed: () => _openFailedDelivery(context, stop),
                 ),
               ),
             ],

@@ -1,7 +1,3 @@
-// ============================================================================
-// provider/today_route_provider.dart
-// Real-API-backed Today's Route state. Same state shape the screen expects.
-// ============================================================================
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -25,12 +21,26 @@ class TodayRouteState {
     this.startStatus = RouteStartStatus.idle,
     this.route,
     this.errorMessage,
+    // ── pickup ──
+    this.isPickupLoading = false,
+    this.activePickupOrderId,
+    this.pickupErrorMessage,
   });
 
   final RouteLoadStatus loadStatus;
   final RouteStartStatus startStatus;
   final TodayRoute? route;
   final String? errorMessage;
+
+  /// True while a pickup API call is in flight.
+  final bool isPickupLoading;
+
+  /// The orderId currently being picked up. Lets the UI disable only the
+  /// matching stop's button rather than every Pickup button.
+  final String? activePickupOrderId;
+
+  /// Last pickup error message, surfaced to the screen as a SnackBar.
+  final String? pickupErrorMessage;
 
   bool get isLoading => loadStatus == RouteLoadStatus.loading;
   bool get isLoaded => loadStatus == RouteLoadStatus.loaded;
@@ -47,12 +57,25 @@ class TodayRouteState {
     TodayRoute? route,
     String? errorMessage,
     bool clearError = false,
+    // pickup
+    bool? isPickupLoading,
+    String? activePickupOrderId,
+    bool clearActivePickup = false,
+    String? pickupErrorMessage,
+    bool clearPickupError = false,
   }) {
     return TodayRouteState(
       loadStatus: loadStatus ?? this.loadStatus,
       startStatus: startStatus ?? this.startStatus,
       route: route ?? this.route,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      isPickupLoading: isPickupLoading ?? this.isPickupLoading,
+      activePickupOrderId: clearActivePickup
+          ? null
+          : (activePickupOrderId ?? this.activePickupOrderId),
+      pickupErrorMessage: clearPickupError
+          ? null
+          : (pickupErrorMessage ?? this.pickupErrorMessage),
     );
   }
 }
@@ -69,7 +92,10 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
   final RouteRepository _repository;
 
   Future<void> loadRoute() async {
-    state = state.copyWith(loadStatus: RouteLoadStatus.loading, clearError: true);
+    state = state.copyWith(
+      loadStatus: RouteLoadStatus.loading,
+      clearError: true,
+    );
 
     final result = await _repository.getTodayRoute();
 
@@ -87,20 +113,18 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
     }
   }
 
-  /// Called when the driver taps "Start Route".
-  /// Updates the driver status to "2" (active) on the backend, then activates
-  /// the route locally. If the status call fails, the route is NOT started and
-  /// an error is surfaced.
   Future<void> startRoute() async {
     if (state.route == null || state.route!.stops.isEmpty) return;
-    if (state.startStatus == RouteStartStatus.starting) return; // guard double-tap
+    if (state.startStatus == RouteStartStatus.starting) return; // double-tap
 
     state = state.copyWith(
       startStatus: RouteStartStatus.starting,
       clearError: true,
     );
 
-    final result = await _repository.updateDriverStatus(status: ApiConstants.driverOnRouteStatus);
+    final result = await _repository.updateDriverStatus(
+      status: ApiConstants.driverOnRouteStatus,
+    );
 
     switch (result) {
       case ApiSuccess():
@@ -113,6 +137,46 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
           startStatus: RouteStartStatus.idle,
           errorMessage: exception.message,
         );
+    }
+  }
+
+
+  Future<bool> pickupOrder(String orderId) async {
+    // Validate input.
+    if (orderId.isEmpty) {
+      state = state.copyWith(
+        pickupErrorMessage: 'Invalid order. Please refresh and try again.',
+      );
+      return false;
+    }
+
+    // Guard against duplicate taps on the same order.
+    if (state.isPickupLoading && state.activePickupOrderId == orderId) {
+      return false;
+    }
+
+    state = state.copyWith(
+      isPickupLoading: true,
+      activePickupOrderId: orderId,
+      clearPickupError: true,
+    );
+
+    final result = await _repository.pickupOrder(orderId: orderId);
+
+    switch (result) {
+      case ApiSuccess(:final data):
+        state = state.copyWith(
+          isPickupLoading: false,
+          clearActivePickup: true,
+        );
+        return data;
+      case ApiFailure(:final exception):
+        state = state.copyWith(
+          isPickupLoading: false,
+          clearActivePickup: true,
+          pickupErrorMessage: exception.message,
+        );
+        return false;
     }
   }
 

@@ -1,31 +1,32 @@
 // ============================================================================
-// data/route_remote_datasource.dart
-// HTTP-only layer for the today-route endpoint. Mirrors AuthRemoteDatasource.
+// lib/features/today_route/data/route_remote_datasource.dart
+//
+// Network layer for the driver-route feature.
+//
+// Uses the central DioClient — NOT a raw Dio instance — so every call gets:
+//   • Bearer token via the auth interceptor
+//   • Connectivity guard (NoInternetException on offline)
+//   • Envelope unwrapping (response.data automatically becomes the `data:` field)
+//   • DioException → NetworkException conversion via networkExceptionFromError
+//
+// Result: each datasource method is a one-liner around DioClient.get/patch<T>
+// and returns ApiResult<T> directly.
 // ============================================================================
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_result.dart';
 import '../../../core/network/dio_client.dart';
+import '../../../uttils/RouteApiConstants.dart';
 import '../model/route_model.dart';
 
-/// Endpoint constants. Move into your shared ApiConstants if you prefer.
-///
-/// NOTE: This path is appended to ApiConstants.baseUrl. The full URL must be
-/// http://103.235.105.96:8086/api/driver/today-route (per Swagger/curl), so:
-///   - if baseUrl = 'http://103.235.105.96:8086'      -> use '/api/driver/today-route'
-///   - if baseUrl = 'http://103.235.105.96:8086/api'  -> use '/driver/today-route'
-/// Pick the one matching your ApiConstants.baseUrl.
-class RouteApiConstants {
-  RouteApiConstants._();
-  static const String todayRoute = '/driver/today-route';
-  static const String driverStatus = '/driver/status';
-}
-
 class RouteRemoteDatasource {
-  const RouteRemoteDatasource(this._dioClient);
+  RouteRemoteDatasource(this._dioClient);
   final DioClient _dioClient;
 
+  // ── Today's route ──────────────────────────────────────────
+  // DioClient unwraps the {success, message, data} envelope, so `json` here
+  // is already the inner `data` object.
   Future<ApiResult<TodayRoute>> getTodayRoute() {
     return _dioClient.get<TodayRoute>(
       RouteApiConstants.todayRoute,
@@ -33,25 +34,47 @@ class RouteRemoteDatasource {
     );
   }
 
-  /// Marks the driver active. Called when the route screen opens.
-  ///
-  /// PATCH /api/driver/status  body: {"status": "<code>"}
-  /// The API expects a string status code (e.g. "2"). The response `data` is
-  /// a bool. Default "2" matches the documented "active/online" value — change
-  /// if your status enum differs.
-  Future<ApiResult<bool>> updateDriverStatus({
-    String status = '2',
-  }) {
+  // ── Update driver status (e.g. "2" → on route) ─────────────
+  // Response shape isn't important to the caller — collapse to `true`.
+  Future<ApiResult<bool>> updateDriverStatus({required String status}) {
     return _dioClient.patch<bool>(
       RouteApiConstants.driverStatus,
       data: {'status': status},
-      fromJson: (json) => json as bool,
+      fromJson: (_) => true,
     );
+  }
+
+  // ── Pickup a specific order ────────────────────────────────
+  // PATCH /driver/orders/{orderId}/pickup — no body required.
+  // Response may be empty, a bool, or an envelope — _parsePickupResponse
+  // handles every shape safely.
+  Future<ApiResult<bool>> pickupOrder({required String orderId}) {
+    return _dioClient.patch<bool>(
+      RouteApiConstants.pickupOrder(orderId),
+      fromJson: _parsePickupResponse,
+    );
+  }
+
+  bool _parsePickupResponse(dynamic data) {
+    if (data is bool) return data;
+    if (data == null) return true; // 2xx with empty body → success
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true ||
+          data['status'] == true ||
+          data['statusCode'] == 200 ||
+          data['statusCode'] == 201 ||
+          data['statusCode'] == 204;
+    }
+    return true; // any other 2xx body still counts as success
   }
 }
 
-// ── Provider ──────────────────────────────────────────────────
-
-final routeRemoteDatasourceProvider = Provider<RouteRemoteDatasource>((ref) {
-  return RouteRemoteDatasource(ref.watch(dioClientProvider));
-});
+// ─────────────────────────────────────────────────────────────
+//  Provider
+//
+//  IMPORTANT: this passes the shared DioClient (with interceptors) — NOT a
+//  bare `Dio()`. Bare Dio bypasses the auth + connectivity + envelope logic.
+// ─────────────────────────────────────────────────────────────
+final routeRemoteDatasourceProvider = Provider<RouteRemoteDatasource>(
+      (ref) => RouteRemoteDatasource(ref.watch(dioClientProvider)),
+);
