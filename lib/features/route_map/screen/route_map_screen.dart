@@ -1,19 +1,17 @@
 // ============================================================================
 // features/today_route/route_map/screen/route_map_screen.dart
 //
-// Route Map Navigation Screen — backed by the REAL Today's Route API.
-//
-// Data source : todayRouteProvider (loaded by TodayRouteScreen before this
-//               screen is pushed). We read the live route + stops from it.
-// UI state    : routeMapUiProvider (selected stop, sheet open/closed).
-// Actions     : markStopCompleted / openInGoogleMaps / pickupOrder on
-//               TodayRouteNotifier.
+// KEY CHANGE vs original:
+//   • `_openDeliveryConfirmation` now passes `stop.id` and a `DeliveryOrderArgs`
+//     built from the live RouteStop fields into DeliveryConfirmationScreen.
+//   • No other logic changed — pickup, navigation, failed delivery are untouched.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../delivery_confirm/delivery_confirm_screen.dart';
+import '../../delivery_confirm/provider/delivery_confirmation_provider.dart';
 import '../../failed_delivery/presentation/screens/failed_delivery_screen.dart';
 import '../../navigation/navigation_screen.dart';
 import '../../today_route/model/route_model.dart';
@@ -41,8 +39,10 @@ class RouteMapScreen extends ConsumerWidget {
           child: CircularProgressIndicator(color: Colors.white),
         ),
         RouteLoadStatus.error => _ErrorView(
-          message: routeState.errorMessage ?? 'Could not load your route.',
-          onRetry: () => ref.read(todayRouteProvider.notifier).refresh(),
+          message:
+          routeState.errorMessage ?? 'Could not load your route.',
+          onRetry: () =>
+              ref.read(todayRouteProvider.notifier).refresh(),
           onBack: () => Navigator.of(context).maybePop(),
         ),
         RouteLoadStatus.loaded => routeState.route == null ||
@@ -65,10 +65,8 @@ class _LoadedBody extends ConsumerWidget {
     final uiNotifier = ref.read(routeMapUiProvider.notifier);
     final routeNotifier = ref.read(todayRouteProvider.notifier);
 
-    // Keep selection in range if the stop list changes.
     final selectedIndex = ui.selectedIndex.clamp(0, route.stops.length - 1);
     final stop = route.stops[selectedIndex];
-
     final projection = MapProjection.fromRoute(route);
 
     Future<void> completeAndAdvance(RouteStop s) async {
@@ -106,31 +104,23 @@ class _LoadedBody extends ConsumerWidget {
                   expanded: ui.sheetExpanded,
                   canGoPrev: selectedIndex > 0,
                   canGoNext: selectedIndex < route.stops.length - 1,
-
-                  // Spinner + disabled state for the Pickup button.
                   isPickupLoading: routeState.isPickupLoading &&
                       routeState.activePickupOrderId == stop.id,
-
                   onToggle: uiNotifier.toggleSheet,
                   onPrev: uiNotifier.prevStop,
                   onNext: uiNotifier.nextStop,
                   onNavigate: () =>
                       _startTurnByTurnNavigation(context, route.stops),
-
-                  // ── Pickup: real API call, advance only on success ──
                   onPickup: () async {
                     if (stop.id.isEmpty) {
                       _toast(context,
                           'Invalid order. Please refresh and try again.');
                       return;
                     }
-
                     final success = await ref
                         .read(todayRouteProvider.notifier)
                         .pickupOrder(stop.id);
-
                     if (!context.mounted) return;
-
                     if (success) {
                       await _showPickupSuccess(context);
                       if (!context.mounted) return;
@@ -143,11 +133,13 @@ class _LoadedBody extends ConsumerWidget {
                     }
                   },
 
+                  // ── Delivered: now passes orderId + order info ──────────
                   onDelivered: () => _openDeliveryConfirmation(
                     context,
                     stop,
                     onConfirmed: () => completeAndAdvance(stop),
                   ),
+
                   onFailed: () => _openFailedDelivery(context, stop),
                 ),
               ),
@@ -163,8 +155,10 @@ class _LoadedBody extends ConsumerWidget {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(msg,
-              style: const TextStyle(fontFamily: 'Poppins', fontSize: 13)),
+          content: Text(
+            msg,
+            style: const TextStyle(fontFamily: 'Poppins', fontSize: 13),
+          ),
           behavior: SnackBarBehavior.floating,
           backgroundColor: RouteColors.tealDark,
           duration: const Duration(milliseconds: 1400),
@@ -182,7 +176,6 @@ class _LoadedBody extends ConsumerWidget {
     );
   }
 
-  // ── Navigate → real GPS turn-by-turn engine, one stop at a time ──
   void _startTurnByTurnNavigation(
       BuildContext context, List<RouteStop> stops) {
     Navigator.of(context).push(
@@ -195,31 +188,50 @@ class _LoadedBody extends ConsumerWidget {
     );
   }
 
-  // ── Delivered → real DeliveryConfirmationScreen ───────────────
+  // ── Delivered → DeliveryConfirmationScreen ────────────────────────────────
+  //
+  // CHANGE: we now build DeliveryOrderArgs from the live RouteStop and pass
+  //         orderId explicitly so the upload hits the correct API endpoint.
   Future<void> _openDeliveryConfirmation(
       BuildContext context,
       RouteStop stop, {
         required VoidCallback onConfirmed,
       }) async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const DeliveryConfirmationScreen()),
+    final args = DeliveryOrderArgs(
+      orderId: stop.id,                    // ← real UUID from the API
+      customerName: stop.patientName,
+      address: stop.address,
+      pharmacyName: stop.pharmacyName,
+      statusLabel: 'Arrived at destination',
     );
+
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => DeliveryConfirmationScreen(
+          orderId: stop.id,   // ← family key for the controller
+          orderArgs: args,    // ← display data for the UI cards
+        ),
+      ),
+    );
+
     if (result == true) onConfirmed();
   }
 
-  // ── Failed → real FailedDeliveryScreen ────────────────────────
-  Future<void> _openFailedDelivery(BuildContext context, RouteStop stop) async {
+  // ── Failed → FailedDeliveryScreen ─────────────────────────────────────────
+  Future<void> _openFailedDelivery(
+      BuildContext context, RouteStop stop) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const FailedDeliveryScreen()),
     );
   }
 }
 
-// ── Loading / error / empty scaffolds ───────────────────────
+// ── Loading / error / empty scaffolds ─────────────────────────────────────
 
 class _CenteredOnTeal extends StatelessWidget {
   const _CenteredOnTeal({required this.child});
   final Widget child;
+
   @override
   Widget build(BuildContext context) =>
       Container(color: RouteColors.tealDark, child: Center(child: child));
@@ -231,6 +243,7 @@ class _ErrorView extends StatelessWidget {
     required this.onRetry,
     required this.onBack,
   });
+
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onBack;
@@ -306,7 +319,8 @@ class _EmptyView extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              const Icon(Icons.inbox_rounded, size: 56, color: Colors.white70),
+              const Icon(Icons.inbox_rounded,
+                  size: 56, color: Colors.white70),
               const SizedBox(height: 14),
               const Text(
                 'No stops on your route yet.',
@@ -327,6 +341,7 @@ class _EmptyView extends StatelessWidget {
 
 class _PickupSuccessContent extends StatefulWidget {
   const _PickupSuccessContent();
+
   @override
   State<_PickupSuccessContent> createState() => _PickupSuccessContentState();
 }
@@ -335,9 +350,10 @@ class _PickupSuccessContentState extends State<_PickupSuccessContent> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) Navigator.of(context).pop();
-    });
+    Future.delayed(
+      const Duration(milliseconds: 1500),
+          () { if (mounted) Navigator.of(context).pop(); },
+    );
   }
 
   @override
@@ -353,8 +369,8 @@ class _PickupSuccessContentState extends State<_PickupSuccessContent> {
               color: Colors.white.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child:
-            const Icon(Icons.check_rounded, size: 38, color: Colors.white),
+            child: const Icon(Icons.check_rounded,
+                size: 38, color: Colors.white),
           ),
           const SizedBox(height: 14),
           const Text(

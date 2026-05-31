@@ -60,6 +60,11 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<key>NSCameraUsageDescription</key>
     <string>We need camera access to take a delivery confirmation photo.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Your location is used to track your delivery route in real time.</string>
+
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Your location is used to track your delivery route in real time.</string>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>

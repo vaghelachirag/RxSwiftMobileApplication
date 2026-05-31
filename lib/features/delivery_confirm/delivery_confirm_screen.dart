@@ -1,28 +1,19 @@
 // ============================================================================
 // lib/features/delivery_confirm/presentation/screens/delivery_confirmation_screen.dart
 //
-// RESTYLED to match route_map_screen.dart — teal AppBar, RouteColors /
-// RouteSpacing / RouteRadius / RouteShadows / RouteText tokens, same rhythm.
-//
-// Only styling changed in THIS file. All providers, controllers, and the
-// composed child widgets (OrderSummaryCard, InstructionCard, CameraCaptureArea,
-// LocationInfoCard, UploadStatusBanner) are wired exactly as before.
-//
-// ⚠️ PARTIAL COVERAGE: those child widgets still use AppColors/AppSpacing
-//    inside themselves. Send their source files if you want them restyled too.
-//
-// FUNCTIONAL TWEAK: the success "Done" button now calls `maybePop(true)`.
-// route_map_screen.dart already checks this return value to advance the stop
-// after a confirmed delivery. If you don't want that signal, change the line
-// back to `Navigator.of(context).maybePop()`.
+// KEY CHANGE vs original:
+//   • Constructor now accepts `orderId` (required) and `orderArgs` (optional
+//     rich order info). Both are forwarded to the family providers so every
+//     API call uses the real RouteStop UUID — nothing is hardcoded.
+//   • Provider watch calls updated to family syntax:
+//       deliveryControllerProvider(orderId)
+//       deliveryOrderProvider(orderArgs)
+//   • All styling / layout / child widgets unchanged.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/features/delivery_confirm/provider/delivery_confirmation_provider.dart';
-
-// Theme: route_map design tokens. Adjust ONLY if your route_map folder lives
-// somewhere other than features/today_route/route_map/theme/.
 
 import '../../widgets/camera_capture_area.dart';
 import '../../widgets/instruction_card.dart';
@@ -33,32 +24,55 @@ import '../route_map/theme/route_map_theme.dart';
 import 'domain/delivery_state.dart';
 
 class DeliveryConfirmationScreen extends ConsumerWidget {
-  const DeliveryConfirmationScreen({super.key});
+  const DeliveryConfirmationScreen({
+    super.key,
+    required this.orderId,
+    this.orderArgs,
+  });
+
+  /// The UUID from RouteStop.id — used as the family key for the controller
+  /// and forwarded to the API upload call.
+  final String orderId;
+
+  /// Optional rich order details to display in the UI. When null the screen
+  /// shows minimal info (just the orderId is needed for the API call).
+  final DeliveryOrderArgs? orderArgs;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(deliveryControllerProvider);
-    final controller = ref.read(deliveryControllerProvider.notifier);
-    final order = ref.watch(deliveryOrderProvider);
+    // Use the per-orderId family provider instances.
+    final state = ref.watch(deliveryControllerProvider(orderId));
+    final controller =
+    ref.read(deliveryControllerProvider(orderId).notifier);
 
-    // Surface success as a one-off SnackBar — themed.
-    ref.listen<DeliveryState>(deliveryControllerProvider, (prev, next) {
-      if (prev?.status != DeliveryStatus.uploadSuccess &&
-          next.status == DeliveryStatus.uploadSuccess) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              backgroundColor: RouteColors.tealDark,
-              behavior: SnackBarBehavior.floating,
-              content: Text(
-                'Delivery confirmed successfully.',
-                style: RouteText.body(Colors.white),
-              ),
-            ),
-          );
-      }
-    });
+    final effectiveArgs = orderArgs ??
+        DeliveryOrderArgs(
+          orderId: orderId,
+          customerName: 'Patient',
+          address: '',
+          pharmacyName: '',
+        );
+    final order = ref.watch(deliveryOrderProvider(effectiveArgs));
+
+    // Surface uploadSuccess as a themed SnackBar.
+    ref.listen<DeliveryState>(deliveryControllerProvider(orderId),
+            (prev, next) {
+          if (prev?.status != DeliveryStatus.uploadSuccess &&
+              next.status == DeliveryStatus.uploadSuccess) {
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                SnackBar(
+                  backgroundColor: RouteColors.tealDark,
+                  behavior: SnackBarBehavior.floating,
+                  content: Text(
+                    'Delivery confirmed successfully.',
+                    style: RouteText.body(Colors.white),
+                  ),
+                ),
+              );
+          }
+        });
 
     return Scaffold(
       backgroundColor: RouteColors.background,
@@ -79,7 +93,6 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Responsive max width so it looks good on large phones / tablets.
             final maxW =
             constraints.maxWidth > 520 ? 520.0 : constraints.maxWidth;
             return Center(
@@ -130,12 +143,14 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
         state: state,
         onOpenCamera: controller.openCamera,
         onComplete: controller.uploadAndComplete,
-        // Returns `true` so route_map_screen can advance the stop on return.
+        // Returns `true` → route_map_screen advances the stop.
         onDone: () => Navigator.of(context).maybePop(true),
       ),
     );
   }
 }
+
+// ── Bottom action bar (unchanged) ─────────────────────────────────────────
 
 class _BottomActionBar extends StatelessWidget {
   const _BottomActionBar({
@@ -152,7 +167,6 @@ class _BottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Success → a single "Done" button.
     if (state.isSuccess) {
       return _BarWrapper(
         child: _PrimaryButton(
@@ -164,14 +178,12 @@ class _BottomActionBar extends StatelessWidget {
       );
     }
 
-    // No photo yet → primary CTA is "Take Photo".
     if (!state.hasPhoto) {
       return _BarWrapper(
         child: _PrimaryButton(
           label: 'Take Photo',
           icon: Icons.camera_alt_rounded,
           color: RouteColors.primary,
-          // Disabled while the camera is opening to prevent double launch.
           onPressed: state.status == DeliveryStatus.cameraOpening
               ? null
               : onOpenCamera,
@@ -179,13 +191,12 @@ class _BottomActionBar extends StatelessWidget {
       );
     }
 
-    // Photo captured → "Upload & Complete Delivery". Disabled while uploading.
     final bool enabled = state.canComplete;
     return _BarWrapper(
       child: _PrimaryButton(
-        label:
-        state.isUploading ? 'Uploading…' : 'Upload & Complete Delivery',
-        icon: state.isUploading ? null : Icons.check_circle_outline_rounded,
+        label: state.isUploading ? 'Uploading…' : 'Upload & Complete Delivery',
+        icon:
+        state.isUploading ? null : Icons.check_circle_outline_rounded,
         color: RouteColors.accentGreen,
         loading: state.isUploading,
         onPressed: enabled ? onComplete : null,
@@ -204,7 +215,11 @@ class _BarWrapper extends StatelessWidget {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(
-            RouteSpacing.lg, RouteSpacing.md, RouteSpacing.lg, RouteSpacing.md),
+          RouteSpacing.lg,
+          RouteSpacing.md,
+          RouteSpacing.lg,
+          RouteSpacing.md,
+        ),
         decoration: BoxDecoration(
           color: RouteColors.surface,
           border: Border(top: BorderSide(color: RouteColors.cardBorder)),
@@ -262,8 +277,7 @@ class _PrimaryButton extends StatelessWidget {
               )
             else if (icon != null)
               Icon(icon, size: 20),
-            if (loading || icon != null)
-              const SizedBox(width: RouteSpacing.sm),
+            if (loading || icon != null) const SizedBox(width: RouteSpacing.sm),
             Text(label, style: RouteText.button(Colors.white)),
           ],
         ),

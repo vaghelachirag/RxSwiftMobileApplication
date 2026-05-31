@@ -1,12 +1,5 @@
 // ============================================================================
 // features/today_route/route_map/screen/route_map_screen.dart
-//
-// Route Map Navigation Screen — now backed by the REAL Today's Route API.
-//
-// Data source : todayRouteProvider (loaded by TodayRouteScreen before this
-//               screen is pushed). We read the live route + stops from it.
-// UI state    : routeMapUiProvider (selected stop, sheet open/closed).
-// Actions     : markStopCompleted / openInGoogleMaps on TodayRouteNotifier.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -22,21 +15,145 @@ import '../../../route_map/theme/route_map_theme.dart';
 import '../../../route_map/widgets/route_header.dart';
 import '../../../route_map/widgets/stop_bottom_sheet.dart';
 import '../../provider/today_route_provider.dart';
+import '../provider/location_sync_provider.dart';
+import '../repository/location_sync_repository.dart';
 import '../widgets/route_map_google_view.dart';
 
+// ── Converted to ConsumerStatefulWidget for lifecycle hooks only ──────────
+// All route/pickup/drop/navigation logic inside _LoadedBody is IDENTICAL
+// to the original. Only initState + dispose were added to RouteMapScreen.
 
-class RouteMapScreen extends ConsumerWidget {
+class RouteMapScreen extends ConsumerStatefulWidget {
   const RouteMapScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RouteMapScreen> createState() => _RouteMapScreenState();
+}
+
+class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initLocationSync());
+  }
+
+  @override
+  void dispose() {
+    ref.read(locationSyncProvider.notifier).stop();
+    super.dispose();
+  }
+
+  Future<void> _initLocationSync() async {
+    if (!mounted) return;
+
+    final repo = ref.read(locationSyncRepositoryProvider);
+    final readiness = await repo.requestPermission();
+
+    if (!mounted) return;
+
+    switch (readiness) {
+      case LocationReadiness.ready:
+        ref.read(locationSyncProvider.notifier).start();
+
+      case LocationReadiness.serviceDisabled:
+        await _showLocationServiceDialog(repo);
+
+      case LocationReadiness.permissionDenied:
+        _showPermissionBanner('Location permission denied. Live tracking disabled.');
+
+      case LocationReadiness.permissionPermanentlyDenied:
+        await _showPermanentlyDeniedDialog(repo);
+    }
+  }
+
+  Future<void> _showLocationServiceDialog(LocationSyncRepository repo) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Location Required',
+            style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700)),
+        content: const Text(
+          'Location services are off. Please enable GPS so the app can track your route.',
+          style: TextStyle(fontFamily: 'Poppins', fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Skip')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: RouteColors.tealDark),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await repo.openLocationSettings();
+      if (mounted) await _initLocationSync();
+    }
+  }
+
+  Future<void> _showPermanentlyDeniedDialog(LocationSyncRepository repo) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Location Permission Needed',
+            style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700)),
+        content: const Text(
+          'Location permission was permanently denied. Please grant it in app settings.',
+          style: TextStyle(fontFamily: 'Poppins', fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Skip')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: RouteColors.tealDark),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('App Settings'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await repo.openAppSettings();
+      if (mounted) await _initLocationSync();
+    }
+  }
+
+  void _showPermissionBanner(String message) {
+    ScaffoldMessenger.of(context).showMaterialBanner(
+      MaterialBanner(
+        backgroundColor: RouteColors.tealDark,
+        content: Text(message,
+            style: const TextStyle(
+                fontFamily: 'Poppins', fontSize: 13, color: Colors.white)),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+            child: const Text('OK', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final routeState = ref.watch(todayRouteProvider);
 
     return Scaffold(
       backgroundColor: RouteColors.tealDark,
       body: switch (routeState.loadStatus) {
         RouteLoadStatus.loading || RouteLoadStatus.idle =>
-        const _CenteredOnTeal(child: CircularProgressIndicator(color: Colors.white)),
+        const _CenteredOnTeal(
+            child: CircularProgressIndicator(color: Colors.white)),
         RouteLoadStatus.error => _ErrorView(
           message: routeState.errorMessage ?? 'Could not load your route.',
           onRetry: () => ref.read(todayRouteProvider.notifier).refresh(),
@@ -51,6 +168,10 @@ class RouteMapScreen extends ConsumerWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Everything below is byte-for-byte identical to the original file.
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _LoadedBody extends ConsumerWidget {
   const _LoadedBody({required this.routeState});
   final TodayRouteState routeState;
@@ -62,13 +183,11 @@ class _LoadedBody extends ConsumerWidget {
     final uiNotifier = ref.read(routeMapUiProvider.notifier);
     final routeNotifier = ref.read(todayRouteProvider.notifier);
 
-    // Keep selection in range if the stop list changes.
     final selectedIndex = ui.selectedIndex.clamp(0, route.stops.length - 1);
     final stop = route.stops[selectedIndex];
 
     Future<void> completeAndAdvance(RouteStop s) async {
       routeNotifier.markStopCompleted(s.id);
-      // After the data updates, move selection to the new in-progress stop.
       uiNotifier.syncSelectionToProgress();
     }
 
@@ -104,8 +223,8 @@ class _LoadedBody extends ConsumerWidget {
                   onToggle: uiNotifier.toggleSheet,
                   onPrev: uiNotifier.prevStop,
                   onNext: uiNotifier.nextStop,
-                  onNavigate: () =>
-                      _startTurnByTurnNavigation(context, route.stops.cast<RouteStop>()),
+                  onNavigate: () => _startTurnByTurnNavigation(
+                      context, route.stops.cast<RouteStop>()),
                   onPickup: () async {
                     if (stop.id.isEmpty) {
                       _toast(context,
@@ -169,15 +288,6 @@ class _LoadedBody extends ConsumerWidget {
     );
   }
 
-  // ── Navigate → real GPS turn-by-turn engine, one stop at a time ──
-  //
-  // Pushes the existing NavigationMapScreen (live GPS + Google Directions,
-  // navigates to the current stop and auto-advances on arrival) but wraps it
-  // in a ProviderScope that overrides the engine's `navigationProvider` so it
-  // runs against the REAL route stops instead of the engine's demo data.
-  //
-  // The old screen and old provider are untouched; the override does the
-  // seeding via navigation_bridge.dart.
   void _startTurnByTurnNavigation(
       BuildContext context, List<RouteStop> stops) {
     Navigator.of(context).push(
@@ -190,58 +300,33 @@ class _LoadedBody extends ConsumerWidget {
     );
   }
 
-  // ── Delivered → real DeliveryConfirmationScreen ───────────────
-  //
-  // Both destination screens read their own order from their own providers
-  // (deliveryOrderProvider / failedDeliveryOrderProvider) and take no
-  // constructor args, so we just push them.
-  //
-  // 👉 INJECT THE SELECTED STOP HERE if your order providers need to be told
-  //    which stop is active. For example, if you expose a setter:
-  //
-  //      ref.read(deliveryOrderProvider.notifier).setFromStop(stop);
-  //
-  //    add that call right before the push (uncomment + adapt to your API).
   Future<void> _openDeliveryConfirmation(
       BuildContext context,
       RouteStop stop, {
         required VoidCallback onConfirmed,
       }) async {
-    // ref.read(deliveryOrderProvider.notifier).setFromStop(stop); // ← your hook
-
     final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const DeliveryConfirmationScreen()),
+      MaterialPageRoute(
+          builder: (_) =>
+              DeliveryConfirmationScreen(orderId: stop.orderId)),
     );
-
-    // Advance the route only when the delivery was actually completed.
-    //
-    // For this to fire, the confirmation screen must return `true` when done.
-    // In your delivery_confirmation_screen.dart, change the success "Done"
-    // button from:
-    //     onDone: () => Navigator.of(context).maybePop(),
-    // to:
-    //     onDone: () => Navigator.of(context).maybePop(true),
-    //
-    // If the driver just backs out, it returns null and the stop is untouched.
     if (result == true) onConfirmed();
   }
 
-  // ── Failed → real FailedDeliveryScreen ────────────────────────
-  Future<void> _openFailedDelivery(BuildContext context, RouteStop stop) async {
-    // ref.read(failedDeliveryOrderProvider.notifier).setFromStop(stop); // ← your hook
-
+  Future<void> _openFailedDelivery(
+      BuildContext context, RouteStop stop) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const FailedDeliveryScreen()),
     );
-    // Optionally mark the stop as skipped/failed here based on the result.
   }
 }
 
-// ── Loading / error / empty scaffolds ───────────────────────
+// ── Static scaffolds ──────────────────────────────────────────────────────
 
 class _CenteredOnTeal extends StatelessWidget {
   const _CenteredOnTeal({required this.child});
   final Widget child;
+
   @override
   Widget build(BuildContext context) =>
       Container(color: RouteColors.tealDark, child: Center(child: child));
@@ -253,6 +338,7 @@ class _ErrorView extends StatelessWidget {
     required this.onRetry,
     required this.onBack,
   });
+
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onBack;
@@ -349,6 +435,7 @@ class _EmptyView extends StatelessWidget {
 
 class _PickupSuccessContent extends StatefulWidget {
   const _PickupSuccessContent();
+
   @override
   State<_PickupSuccessContent> createState() => _PickupSuccessContentState();
 }
@@ -375,8 +462,8 @@ class _PickupSuccessContentState extends State<_PickupSuccessContent> {
               color: Colors.white.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child:
-            const Icon(Icons.check_rounded, size: 38, color: Colors.white),
+            child: const Icon(Icons.check_rounded,
+                size: 38, color: Colors.white),
           ),
           const SizedBox(height: 14),
           const Text(

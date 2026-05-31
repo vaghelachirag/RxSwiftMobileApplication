@@ -90,6 +90,11 @@ class AppColors {
   static const Color cardBorder = Color(0xFFE7EDF3);
   static const Color errorBg = Color(0xFFFCEBEA);
   static const Color warningBg = Color(0xFFFCF4DE);
+
+  // Login
+  static const Color inputFill = Color(0xFFF7F9FC);
+  static const Color hint = Color(0xFFB0BEC5);
+  static const Color errorBackground = Color(0xFFFFEBEE);
 }
 
 class AppSpacing {
@@ -374,5 +379,84 @@ class AppTheme {
         borderRadius: BorderRadius.circular(AppRadius.full),
       ),
     ),
+  );
+}
+
+class AppTextStyles {
+  AppTextStyles._();
+
+  static const String fontFamily = 'Poppins';
+
+  static const TextStyle screenTitle = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 26,
+    fontWeight: FontWeight.w700,
+    color: AppColors.textDark,
+  );
+
+  static const TextStyle screenSubtitle = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    color: AppColors.textMuted,
+  );
+
+  static const TextStyle fieldLabel = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textDark,
+  );
+
+  static const TextStyle inputText = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    color: AppColors.textDark,
+  );
+
+  static const TextStyle inputHint = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    color: AppColors.hint,
+  );
+
+  static const TextStyle buttonText = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textOnPrimary,
+    letterSpacing: 0.4,
+  );
+
+  static const TextStyle footerText = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    color: AppColors.textMuted,
+  );
+
+  static const TextStyle linkText = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 13,
+    fontWeight: FontWeight.w500,
+    color: AppColors.primary,
+  );
+
+  static const TextStyle errorText = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    color: AppColors.error,
+  );
+
+  static const TextStyle supportText = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    color: AppColors.textMuted,
+    decoration: TextDecoration.underline,
+    decorationColor: AppColors.textMuted,
   );
 }

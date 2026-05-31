@@ -5,17 +5,8 @@ import 'package:rxswift/features/today_route/provider/today_route_provider.dart'
 import 'package:rxswift/features/today_route/route_map/screen/route_map_screen.dart';
 
 import '../../theme/app_theme.dart';
-import '../navigation/navigation_screen.dart';
-import '../route_map/screen/route_map_screen.dart' hide RouteMapScreen;
+import '../../widgets/app_progress_dialoug.dart';
 import 'model/route_model.dart';
-
-// ─────────────────────────────────────────────────────────────
-//  Today Route Screen  (Figma redesign)
-//  - Vertical numbered timeline
-//  - Clean white cards with soft shadow
-//  - Plain subheader text  ("4 Stops · 10:00 PM Pickup")
-//  - Solid blue Start Route button
-// ─────────────────────────────────────────────────────────────
 
 class TodayRouteScreen extends ConsumerWidget {
   const TodayRouteScreen({super.key});
@@ -71,8 +62,6 @@ class TodayRouteScreen extends ConsumerWidget {
   }
 }
 
-// Keep this alias so any existing navigation pointing at
-// `TodayRouteScaffold` continues to work.
 class TodayRouteScaffold extends StatelessWidget {
   const TodayRouteScaffold({super.key});
 
@@ -123,11 +112,8 @@ class _LoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(
-        valueColor: AlwaysStoppedAnimation(AppColors.primary),
-        strokeWidth: 2.5,
-      ),
+    return const AppProgressLoader(
+      message: "Loading today's route...",
     );
   }
 }

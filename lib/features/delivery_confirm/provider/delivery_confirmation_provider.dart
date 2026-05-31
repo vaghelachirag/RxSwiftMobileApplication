@@ -1,31 +1,68 @@
 // ============================================================================
-// presentation/providers/delivery_providers.dart
-// Riverpod providers + StateNotifier controlling the delivery flow.
+// lib/features/delivery_confirm/provider/delivery_confirmation_provider.dart
 // ============================================================================
 
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/network/dio_client.dart';
+import '../data/delivery_remote_datasource.dart';
 import '../domain/delivery_state.dart';
 import '../repository/delivery_repository.dart';
 
-// -- Repository provider ------------------------------------------------------
-final deliveryRepositoryProvider = Provider<DeliveryRepository>((ref) {
-  return DeliveryRepository();
+// ── Infrastructure providers ──────────────────────────────────────────────
+
+final deliveryRemoteDataSourceProvider =
+Provider<DeliveryRemoteDataSource>((ref) {
+  return DeliveryRemoteDataSource(ref.watch(dioClientProvider));
 });
 
-// -- Order provider -----------------------------------------------------------
-final deliveryOrderProvider = Provider<DeliveryOrder>((ref) {
-  return const DeliveryOrder(
-    orderId: 'RX-48291',
-    customerName: 'John Smith',
-    address: '1400-048-665, 24 Maple Street, Apt 5B',
-    pharmacyName: 'WellCare Pharmacy',
-    statusLabel: 'Arrived at destination',
+final deliveryRepositoryProvider = Provider<DeliveryRepository>((ref) {
+  return DeliveryRepository(
+    remoteDataSource: ref.watch(deliveryRemoteDataSourceProvider),
   );
 });
 
-// -- StateNotifier ------------------------------------------------------------
+// ── Order provider (family) ───────────────────────────────────────────────
+
+final deliveryOrderProvider =
+Provider.family<DeliveryOrder, DeliveryOrderArgs>((ref, args) {
+  return DeliveryOrder(
+    orderId:      args.orderId,
+    customerName: args.customerName,
+    address:      args.address,
+    pharmacyName: args.pharmacyName,
+    statusLabel:  args.statusLabel,
+  );
+});
+
+class DeliveryOrderArgs {
+  const DeliveryOrderArgs({
+    required this.orderId,
+    required this.customerName,
+    required this.address,
+    required this.pharmacyName,
+    this.statusLabel = 'Arrived at destination',
+  });
+
+  final String orderId;
+  final String customerName;
+  final String address;
+  final String pharmacyName;
+  final String statusLabel;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+          other is DeliveryOrderArgs && other.orderId == orderId;
+
+  @override
+  int get hashCode => orderId.hashCode;
+}
+
+// ── StateNotifier ─────────────────────────────────────────────────────────
+
 class DeliveryController extends StateNotifier<DeliveryState> {
   DeliveryController(this._repo, this._order) : super(const DeliveryState()) {
     _watchConnectivity();
@@ -34,9 +71,6 @@ class DeliveryController extends StateNotifier<DeliveryState> {
   final DeliveryRepository _repo;
   final DeliveryOrder _order;
   StreamSubscription<bool>? _connSub;
-
-  /// The raw, unstamped photo path from the camera. Kept so that retrying
-  /// location re-stamps the original rather than stacking stamps.
   String? _rawPhotoPath;
 
   void _watchConnectivity() {
@@ -47,7 +81,8 @@ class DeliveryController extends StateNotifier<DeliveryState> {
     });
   }
 
-  // -- Open camera & capture (+ location) ------------------------------------
+  // ── Camera ────────────────────────────────────────────────────────────────
+
   Future<void> openCamera() async {
     state = state.copyWith(
       status: DeliveryStatus.cameraOpening,
@@ -57,7 +92,6 @@ class DeliveryController extends StateNotifier<DeliveryState> {
     try {
       final path = await _repo.captureFromCamera();
       if (path == null) {
-        // User cancelled — go back to whatever made sense before.
         state = state.copyWith(
           status: state.hasPhoto
               ? DeliveryStatus.photoCaptured
@@ -66,8 +100,6 @@ class DeliveryController extends StateNotifier<DeliveryState> {
         return;
       }
 
-      // Capture location at the moment of the photo. Best-effort: if it fails,
-      // we WARN but still let the driver proceed.
       CaptureLocation? loc;
       String? warning;
       try {
@@ -78,19 +110,16 @@ class DeliveryController extends StateNotifier<DeliveryState> {
         warning = 'Could not capture location. You can retry or proceed.';
       }
 
-      // Burn the location text onto the image when we have a fix. The stamped
-      // file becomes the photo we preview, upload, and persist.
       _rawPhotoPath = path;
       String finalPath = path;
       if (loc != null) {
-        state = state.copyWith(status: DeliveryStatus.cameraOpening);
         try {
           finalPath = await _repo.stampLocationOnImage(
             photoPath: path,
             location: loc,
           );
         } catch (_) {
-          finalPath = path; // if stamping fails, keep the raw photo
+          finalPath = path;
         }
       }
 
@@ -114,21 +143,18 @@ class DeliveryController extends StateNotifier<DeliveryState> {
 
   Future<void> retakePhoto() => openCamera();
 
-  /// Retry just the location capture without retaking the photo. Re-stamps
-  /// the original (unstamped) image with the new fix.
+  // ── Location retry ────────────────────────────────────────────────────────
+
   Future<void> retryLocation() async {
     if (!state.hasPhoto) return;
     try {
       final loc = await _repo.getCurrentLocation();
-      var path = state.photoPath!;
-      final raw = _rawPhotoPath ?? path;
+      final raw = _rawPhotoPath ?? state.photoPath!;
+      String path = raw;
       try {
-        path = await _repo.stampLocationOnImage(
-          photoPath: raw,
-          location: loc,
-        );
+        path = await _repo.stampLocationOnImage(photoPath: raw, location: loc);
       } catch (_) {
-        path = raw; // keep raw if stamping fails
+        path = raw;
       }
       state = state.copyWith(
         photoPath: path,
@@ -144,7 +170,11 @@ class DeliveryController extends StateNotifier<DeliveryState> {
     }
   }
 
-  // -- Upload ----------------------------------------------------------------
+  // ── Upload ────────────────────────────────────────────────────────────────
+  //
+  // onProgress removed — DioClient.post() does not expose onSendProgress.
+  // Loading is indicated via DeliveryStatus.uploading in the UI.
+
   Future<void> uploadAndComplete() async {
     if (!state.hasPhoto) return;
 
@@ -159,9 +189,7 @@ class DeliveryController extends StateNotifier<DeliveryState> {
         orderId: _order.orderId,
         photoPath: state.photoPath!,
         location: state.location,
-        onProgress: (p) {
-          state = state.copyWith(uploadProgress: p);
-        },
+        // onProgress removed
       );
       state = state.copyWith(
         status: DeliveryStatus.uploadSuccess,
@@ -188,7 +216,6 @@ class DeliveryController extends StateNotifier<DeliveryState> {
 
   Future<void> retryUpload() => uploadAndComplete();
 
-  /// Retry a photo (+ its location) that was cached while offline.
   Future<void> retryPendingUpload() async {
     final pending = await _repo.getPending();
     if (pending == null) return;
@@ -201,9 +228,7 @@ class DeliveryController extends StateNotifier<DeliveryState> {
     await uploadAndComplete();
   }
 
-  void reset() {
-    state = const DeliveryState();
-  }
+  void reset() => state = const DeliveryState();
 
   @override
   void dispose() {
@@ -212,9 +237,18 @@ class DeliveryController extends StateNotifier<DeliveryState> {
   }
 }
 
+// ── Controller provider (family keyed on orderId) ─────────────────────────
+
 final deliveryControllerProvider =
-StateNotifierProvider<DeliveryController, DeliveryState>((ref) {
-  final repo = ref.watch(deliveryRepositoryProvider);
-  final order = ref.watch(deliveryOrderProvider);
-  return DeliveryController(repo, order);
-});
+StateNotifierProvider.family<DeliveryController, DeliveryState, String>(
+        (ref, orderId) {
+      final repo  = ref.watch(deliveryRepositoryProvider);
+      final order = DeliveryOrder(
+        orderId:      orderId,
+        customerName: '',
+        address:      '',
+        pharmacyName: '',
+        statusLabel:  '',
+      );
+      return DeliveryController(repo, order);
+    });
