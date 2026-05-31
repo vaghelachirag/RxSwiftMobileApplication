@@ -1,5 +1,8 @@
 // ============================================================================
 // lib/features/today_route/route_map/provider/location_sync_provider.dart
+//
+// Sends driver location to API every 1 minute.
+// Latest position is fed in from route_map_screen.dart via updateLatestPosition().
 // ============================================================================
 
 import 'dart:async';
@@ -8,8 +11,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/location_sync_remote_datasource.dart';
 import '../repository/location_sync_repository.dart';
+import 'driver_location_provider.dart';
 
-const _kSyncInterval = Duration(minutes: 1);
+const _kSyncInterval = Duration(seconds: 5);
 
 // ── Repository provider ───────────────────────────────────────────────────
 
@@ -20,32 +24,38 @@ final locationSyncRepositoryProvider = Provider<LocationSyncRepository>(
 );
 
 // ── Notifier ──────────────────────────────────────────────────────────────
-//
-// Uses StateNotifier<void> — universally supported across all Riverpod 2.x
-// versions with no async build complications.
 
 class LocationSyncNotifier extends StateNotifier<void> {
   LocationSyncNotifier(this._repo) : super(null);
 
   final LocationSyncRepository _repo;
   Timer? _timer;
+  DriverPosition? _latestPosition;
 
-  /// Start the periodic sync. Safe to call multiple times.
+  /// Called by route_map_screen on every GPS fix (via listenManual).
+  /// Keeps the latest position ready for the next timer tick.
+  void updateLatestPosition(DriverPosition pos) {
+    _latestPosition = pos;
+  }
+
+  /// Start 1-min periodic sync. Safe to call multiple times.
   void start() {
-    stop();           // cancel any existing timer first
-    _syncNow();       // fire immediately
+    stop();
     _timer = Timer.periodic(_kSyncInterval, (_) => _syncNow());
   }
 
-  /// Stop the periodic sync and cancel the timer.
   void stop() {
     _timer?.cancel();
     _timer = null;
   }
 
   void _syncNow() {
-    // Fire-and-forget. syncOnce() swallows all exceptions internally.
-    _repo.syncOnce();
+    final pos = _latestPosition;
+    if (pos != null) {
+      _repo.syncWithPosition(pos); // fire-and-forget, errors swallowed
+    } else {
+      _repo.syncOnce(); // fallback if no GPS fix received yet
+    }
   }
 
   @override

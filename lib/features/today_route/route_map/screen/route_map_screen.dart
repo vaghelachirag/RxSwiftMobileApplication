@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:rxswift/features/today_route/model/route_model.dart';
 
 import '../../../delivery_confirm/delivery_confirm_screen.dart';
@@ -15,13 +16,11 @@ import '../../../route_map/theme/route_map_theme.dart';
 import '../../../route_map/widgets/route_header.dart';
 import '../../../route_map/widgets/stop_bottom_sheet.dart';
 import '../../provider/today_route_provider.dart';
+import '../provider/driver_location_provider.dart';
+import '../provider/live_route_provider.dart';
 import '../provider/location_sync_provider.dart';
 import '../repository/location_sync_repository.dart';
 import '../widgets/route_map_google_view.dart';
-
-// ── Converted to ConsumerStatefulWidget for lifecycle hooks only ──────────
-// All route/pickup/drop/navigation logic inside _LoadedBody is IDENTICAL
-// to the original. Only initState + dispose were added to RouteMapScreen.
 
 class RouteMapScreen extends ConsumerStatefulWidget {
   const RouteMapScreen({super.key});
@@ -31,6 +30,11 @@ class RouteMapScreen extends ConsumerStatefulWidget {
 }
 
 class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
+
+  // Manual subscription to driverLocationProvider — owned here so we can cancel it.
+  // ref.listenManual works outside build(); ref.listen only works inside build().
+  ProviderSubscription<AsyncValue<DriverPosition>>? _driverSub;
+
   @override
   void initState() {
     super.initState();
@@ -39,32 +43,87 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
 
   @override
   void dispose() {
+    _driverSub?.close();
     ref.read(locationSyncProvider.notifier).stop();
     super.dispose();
   }
+
+  // ── Location permission + start everything ────────────────────────────────
 
   Future<void> _initLocationSync() async {
     if (!mounted) return;
 
     final repo = ref.read(locationSyncRepositoryProvider);
     final readiness = await repo.requestPermission();
-
     if (!mounted) return;
 
     switch (readiness) {
       case LocationReadiness.ready:
-        ref.read(locationSyncProvider.notifier).start();
+        _startTracking();
 
       case LocationReadiness.serviceDisabled:
         await _showLocationServiceDialog(repo);
 
       case LocationReadiness.permissionDenied:
-        _showPermissionBanner('Location permission denied. Live tracking disabled.');
+        _showPermissionBanner(
+            'Location permission denied. Live tracking disabled.');
 
       case LocationReadiness.permissionPermanentlyDenied:
         await _showPermanentlyDeniedDialog(repo);
     }
   }
+
+  /// Called once permission is granted.
+  /// Wires up:
+  ///   1. driverLocationProvider  → GPS stream starts
+  ///   2. liveRouteProvider       → redraws route on every GPS fix
+  ///   3. locationSyncProvider    → sends location to API every 1 min
+  void _startTracking() {
+    // Warm up the GPS stream.
+    ref.read(driverLocationProvider);
+
+    // Start 1-min API sync timer.
+    ref.read(locationSyncProvider.notifier).start();
+
+    // One listenManual subscription drives both:
+    //   1. liveRouteProvider  — redraws route on every GPS fix
+    //   2. locationSyncProvider — keeps latest position for 1-min timer
+    _driverSub?.close();
+    _driverSub = ref.listenManual<AsyncValue<DriverPosition>>(
+      driverLocationProvider,
+          (_, next) => next.whenData(_onDriverPosition),
+    );
+  }
+
+  /// Called on every GPS fix.
+  void _onDriverPosition(DriverPosition pos) {
+    if (!mounted) return;
+
+    // Feed latest position to the 1-min sync timer.
+    ref.read(locationSyncProvider.notifier).updateLatestPosition(pos);
+
+    // Find the next unfinished stop from live todayRouteProvider state.
+    final stops = ref.read(todayRouteProvider).route?.stops ?? [];
+    RouteStop? nextStop;
+    for (final s in stops) {
+      if (!s.hasCoordinates) continue;
+      if (s.status == StopStatus.completed || s.status == StopStatus.skipped) {
+        continue;
+      }
+      nextStop = s;
+      break;
+    }
+
+    if (nextStop == null) return; // all stops done
+
+    // Update live road route: driver → next stop.
+    ref.read(liveRouteProvider.notifier).updateTarget(
+      pos.latLng,
+      LatLng(nextStop.latitude, nextStop.longitude),
+    );
+  }
+
+  // ── Permission dialogs (unchanged from original) ─────────────────────────
 
   Future<void> _showLocationServiceDialog(LocationSyncRepository repo) async {
     final confirm = await showDialog<bool>(
@@ -73,7 +132,8 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text('Location Required',
-            style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700)),
+            style: TextStyle(
+                fontFamily: 'Poppins', fontWeight: FontWeight.w700)),
         content: const Text(
           'Location services are off. Please enable GPS so the app can track your route.',
           style: TextStyle(fontFamily: 'Poppins', fontSize: 14),
@@ -83,7 +143,8 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Skip')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: RouteColors.tealDark),
+            style: FilledButton.styleFrom(
+                backgroundColor: RouteColors.tealDark),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Open Settings'),
           ),
@@ -96,14 +157,16 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
     }
   }
 
-  Future<void> _showPermanentlyDeniedDialog(LocationSyncRepository repo) async {
+  Future<void> _showPermanentlyDeniedDialog(
+      LocationSyncRepository repo) async {
     final confirm = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text('Location Permission Needed',
-            style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700)),
+            style: TextStyle(
+                fontFamily: 'Poppins', fontWeight: FontWeight.w700)),
         content: const Text(
           'Location permission was permanently denied. Please grant it in app settings.',
           style: TextStyle(fontFamily: 'Poppins', fontSize: 14),
@@ -113,7 +176,8 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Skip')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: RouteColors.tealDark),
+            style: FilledButton.styleFrom(
+                backgroundColor: RouteColors.tealDark),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('App Settings'),
           ),
@@ -132,17 +196,22 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
         backgroundColor: RouteColors.tealDark,
         content: Text(message,
             style: const TextStyle(
-                fontFamily: 'Poppins', fontSize: 13, color: Colors.white)),
+                fontFamily: 'Poppins',
+                fontSize: 13,
+                color: Colors.white)),
         actions: [
           TextButton(
-            onPressed: () =>
-                ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-            child: const Text('OK', style: TextStyle(color: Colors.white)),
+            onPressed: () => ScaffoldMessenger.of(context)
+                .hideCurrentMaterialBanner(),
+            child:
+            const Text('OK', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -155,12 +224,14 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
         const _CenteredOnTeal(
             child: CircularProgressIndicator(color: Colors.white)),
         RouteLoadStatus.error => _ErrorView(
-          message: routeState.errorMessage ?? 'Could not load your route.',
-          onRetry: () => ref.read(todayRouteProvider.notifier).refresh(),
+          message:
+          routeState.errorMessage ?? 'Could not load your route.',
+          onRetry: () =>
+              ref.read(todayRouteProvider.notifier).refresh(),
           onBack: () => Navigator.of(context).maybePop(),
         ),
-        RouteLoadStatus.loaded => routeState.route == null ||
-            routeState.route!.stops.isEmpty
+        RouteLoadStatus.loaded =>
+        routeState.route == null || routeState.route!.stops.isEmpty
             ? _EmptyView(onBack: () => Navigator.of(context).maybePop())
             : _LoadedBody(routeState: routeState),
       },
@@ -169,7 +240,7 @@ class _RouteMapScreenState extends ConsumerState<RouteMapScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Everything below is byte-for-byte identical to the original file.
+// _LoadedBody — identical to uploaded file
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _LoadedBody extends ConsumerWidget {
@@ -183,7 +254,8 @@ class _LoadedBody extends ConsumerWidget {
     final uiNotifier = ref.read(routeMapUiProvider.notifier);
     final routeNotifier = ref.read(todayRouteProvider.notifier);
 
-    final selectedIndex = ui.selectedIndex.clamp(0, route.stops.length - 1);
+    final selectedIndex =
+    ui.selectedIndex.clamp(0, route.stops.length - 1);
     final stop = route.stops[selectedIndex];
 
     Future<void> completeAndAdvance(RouteStop s) async {
@@ -231,13 +303,10 @@ class _LoadedBody extends ConsumerWidget {
                           'Invalid order. Please refresh and try again.');
                       return;
                     }
-
                     final success = await ref
                         .read(todayRouteProvider.notifier)
                         .pickupOrder(stop.orderId);
-
                     if (!context.mounted) return;
-
                     if (success) {
                       await _showPickupSuccess(context);
                       if (!context.mounted) return;
@@ -267,15 +336,13 @@ class _LoadedBody extends ConsumerWidget {
   void _toast(BuildContext context, String msg) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(msg,
-              style: const TextStyle(fontFamily: 'Poppins', fontSize: 13)),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: RouteColors.tealDark,
-          duration: const Duration(milliseconds: 1400),
-        ),
-      );
+      ..showSnackBar(SnackBar(
+        content: Text(msg,
+            style: const TextStyle(fontFamily: 'Poppins', fontSize: 13)),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: RouteColors.tealDark,
+        duration: const Duration(milliseconds: 1400),
+      ));
   }
 
   Future<void> _showPickupSuccess(BuildContext context) {
@@ -290,14 +357,12 @@ class _LoadedBody extends ConsumerWidget {
 
   void _startTurnByTurnNavigation(
       BuildContext context, List<RouteStop> stops) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ProviderScope(
-          overrides: [buildNavigationOverride(stops.cast<RouteStop>())],
-          child: const NavigationMapScreen(),
-        ),
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ProviderScope(
+        overrides: [buildNavigationOverride(stops.cast<RouteStop>())],
+        child: const NavigationMapScreen(),
       ),
-    );
+    ));
   }
 
   Future<void> _openDeliveryConfirmation(
@@ -321,7 +386,7 @@ class _LoadedBody extends ConsumerWidget {
   }
 }
 
-// ── Static scaffolds ──────────────────────────────────────────────────────
+// ── Static scaffolds (unchanged) ─────────────────────────────────────────
 
 class _CenteredOnTeal extends StatelessWidget {
   const _CenteredOnTeal({required this.child});
@@ -338,7 +403,6 @@ class _ErrorView extends StatelessWidget {
     required this.onRetry,
     required this.onBack,
   });
-
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onBack;
@@ -364,15 +428,12 @@ class _ErrorView extends StatelessWidget {
               const Icon(Icons.cloud_off_rounded,
                   size: 56, color: Colors.white70),
               const SizedBox(height: 14),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 14,
-                  color: Colors.white,
-                ),
-              ),
+              Text(message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 14,
+                      color: Colors.white)),
               const SizedBox(height: 18),
               FilledButton.icon(
                 onPressed: onRetry,
@@ -414,16 +475,14 @@ class _EmptyView extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              const Icon(Icons.inbox_rounded, size: 56, color: Colors.white70),
+              const Icon(Icons.inbox_rounded,
+                  size: 56, color: Colors.white70),
               const SizedBox(height: 14),
-              const Text(
-                'No stops on your route yet.',
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 14,
-                  color: Colors.white,
-                ),
-              ),
+              const Text('No stops on your route yet.',
+                  style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 14,
+                      color: Colors.white)),
               const Spacer(flex: 2),
             ],
           ),
@@ -437,7 +496,8 @@ class _PickupSuccessContent extends StatefulWidget {
   const _PickupSuccessContent();
 
   @override
-  State<_PickupSuccessContent> createState() => _PickupSuccessContentState();
+  State<_PickupSuccessContent> createState() =>
+      _PickupSuccessContentState();
 }
 
 class _PickupSuccessContentState extends State<_PickupSuccessContent> {
@@ -466,24 +526,18 @@ class _PickupSuccessContentState extends State<_PickupSuccessContent> {
                 size: 38, color: Colors.white),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Picked Up!',
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
+          const Text('Picked Up!',
+              style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
           const SizedBox(height: 4),
-          Text(
-            'Moving to next stop…',
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 13,
-              color: Colors.white.withOpacity(0.85),
-            ),
-          ),
+          Text('Moving to next stop…',
+              style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 13,
+                  color: Colors.white.withOpacity(0.85))),
         ],
       ),
     );
