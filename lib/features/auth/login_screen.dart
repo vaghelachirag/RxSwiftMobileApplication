@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/app_dialougs.dart';
 import '../../widgets/app_progress_dialoug.dart';
 import '../../widgets/rxswift_logo.dart';
+import '../forgot_password/forgot_password_screen.dart';
 import '../today_route/today_route_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -133,6 +134,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _isProgressVisible = false;
 
     AppProgressDialog.hide(context);
+  }
+
+  void _navigateToForgotPassword() {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const ForgotPasswordScreen(),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 350),
+      ),
+    );
   }
 
   void _navigateToTodayRoute() {
@@ -273,7 +289,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                     Align(
                                       alignment: Alignment.centerRight,
                                       child: TextButton(
-                                        onPressed: null,
+                                        onPressed: _navigateToForgotPassword,
                                         style: TextButton.styleFrom(
                                           padding: EdgeInsets.zero,
                                           minimumSize: Size.zero,

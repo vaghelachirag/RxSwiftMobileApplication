@@ -1,8 +1,16 @@
 // ============================================================================
 // lib/features/today_route/route_map/provider/location_sync_provider.dart
 //
-// Sends driver location to API every 1 minute.
-// Latest position is fed in from route_map_screen.dart via updateLatestPosition().
+// Sends driver location to server API every 1 minute.
+//
+// KEY FIX: Provider is NOT autoDispose — the timer must survive for the full
+// lifetime of the screen. autoDispose would kill the provider (and its timer)
+// the moment nothing is actively watching it, which is immediately after
+// ref.read() in _startTracking().
+//
+// Lifecycle is manually controlled:
+//   • screen calls .start()  in _startTracking()
+//   • screen calls .stop()   in dispose()
 // ============================================================================
 
 import 'dart:async';
@@ -13,7 +21,7 @@ import '../data/location_sync_remote_datasource.dart';
 import '../repository/location_sync_repository.dart';
 import 'driver_location_provider.dart';
 
-const _kSyncInterval = Duration(seconds: 5);
+const _kSyncInterval = Duration(minutes: 1);
 
 // ── Repository provider ───────────────────────────────────────────────────
 
@@ -32,15 +40,15 @@ class LocationSyncNotifier extends StateNotifier<void> {
   Timer? _timer;
   DriverPosition? _latestPosition;
 
-  /// Called by route_map_screen on every GPS fix (via listenManual).
-  /// Keeps the latest position ready for the next timer tick.
+  /// Feed the latest GPS fix in from route_map_screen via listenManual.
   void updateLatestPosition(DriverPosition pos) {
     _latestPosition = pos;
   }
 
   /// Start 1-min periodic sync. Safe to call multiple times.
   void start() {
-    stop();
+    stop(); // cancel any existing timer first
+    _syncNow(); // fire immediately on start so first sync doesn't wait 1 min
     _timer = Timer.periodic(_kSyncInterval, (_) => _syncNow());
   }
 
@@ -54,7 +62,7 @@ class LocationSyncNotifier extends StateNotifier<void> {
     if (pos != null) {
       _repo.syncWithPosition(pos); // fire-and-forget, errors swallowed
     } else {
-      _repo.syncOnce(); // fallback if no GPS fix received yet
+      _repo.syncOnce(); // fallback: reads GPS directly if no fix yet
     }
   }
 
@@ -66,8 +74,10 @@ class LocationSyncNotifier extends StateNotifier<void> {
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────
+// NOT autoDispose — must stay alive for the full screen lifetime.
+// The screen calls .stop() in its dispose() to clean up the timer.
 
 final locationSyncProvider =
-StateNotifierProvider.autoDispose<LocationSyncNotifier, void>(
+StateNotifierProvider<LocationSyncNotifier, void>(
       (ref) => LocationSyncNotifier(ref.watch(locationSyncRepositoryProvider)),
 );

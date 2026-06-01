@@ -50,12 +50,6 @@ class DriverLocationNotifier
 
   StreamSubscription<Position>? _sub;
   Position? _lastPosition;
-
-  // Own disposal flag — checked BEFORE touching `state`.
-  // This is necessary because:
-  //   • StateNotifier.mounted throws in debug mode after dispose.
-  //   • StreamSubscription.cancel() is async; already-queued microtasks
-  //     can still call _onPosition after cancel() returns.
   bool _disposed = false;
 
   void _start() {

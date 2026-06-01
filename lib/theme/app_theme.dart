@@ -10,6 +10,7 @@ class AppColors {
   AppColors._();
 
   // ── Brand ──────────────────────────────────────────────────
+  static const Color inputBg = Color(0xFFF5F6F8);
   static const Color primary = Color(0xFF1A3A8F);
   static const Color teal = Color(0xFF00A3A3);
   static const Color tealLight = Color(0xFF00C2CC);
@@ -18,6 +19,11 @@ class AppColors {
   static const Color accent = Color(0xFF66BB6A);
   static const Color accentGreen = Color(0xFF2E9E6B);
   static const Color accentGreenDark = Color(0xFF1F7E54);
+  static const Color timerGreen = Color(0xFF2E7D32);
+
+  static const Color navyText = Color(0xFF1A2B4A);      // Dark navy
+  static const Color subtleText = Color(0xFF6B7A8D);    // Subtle grey-blue
+  static const Color cardBg = Color(0xFFFFFFFF);
 
   static const Color fieldFill = Color(0xFFF4F7FA);
   static const Color dangerDark = Color(0xFFC92A2A);
