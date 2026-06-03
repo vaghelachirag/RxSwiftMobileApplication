@@ -20,6 +20,7 @@ import '../provider/driver_location_provider.dart';
 import '../provider/live_route_provider.dart';
 import '../provider/location_sync_provider.dart';
 import '../repository/location_sync_repository.dart';
+import '../widgets/pickup_photo_sheet.dart';
 import '../widgets/route_map_google_view.dart';
 
 class RouteMapScreen extends ConsumerStatefulWidget {
@@ -297,27 +298,12 @@ class _LoadedBody extends ConsumerWidget {
                   onNext: uiNotifier.nextStop,
                   onNavigate: () => _startTurnByTurnNavigation(
                       context, route.stops.cast<RouteStop>()),
-                  onPickup: () async {
-                    if (stop.id.isEmpty) {
-                      _toast(context,
-                          'Invalid order. Please refresh and try again.');
-                      return;
-                    }
-                    final success = await ref
-                        .read(todayRouteProvider.notifier)
-                        .pickupOrder(stop.orderId);
-                    if (!context.mounted) return;
-                    if (success) {
-                      await _showPickupSuccess(context);
-                      if (!context.mounted) return;
-                      await completeAndAdvance(stop);
-                    } else {
-                      final errorMessage =
-                          ref.read(todayRouteProvider).pickupErrorMessage ??
-                              'Unable to pickup order. Please try again.';
-                      _toast(context, errorMessage);
-                    }
-                  },
+                  onPickup: () => _handlePickup(
+                    context,
+                    ref,
+                    stop,
+                    onConfirmed: () => completeAndAdvance(stop),
+                  ),
                   onDelivered: () => _openDeliveryConfirmation(
                     context,
                     stop,
@@ -331,6 +317,50 @@ class _LoadedBody extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  // ── Pickup: show photo + location sheet, then call API ───────────────────
+  Future<void> _handlePickup(
+      BuildContext context,
+      WidgetRef    ref,
+      RouteStop    stop, {
+        required VoidCallback onConfirmed,
+      }) async {
+    if (stop.id.isEmpty) {
+      _toast(context, 'Invalid order. Please refresh and try again.');
+      return;
+    }
+
+    // 1. Show the pickup photo + location popup.
+    final result = await showPickupPhotoSheet(
+      context,
+      stopAddress: stop.address,
+    );
+
+    // Driver dismissed the sheet without confirming.
+    if (result == null || !context.mounted) return;
+
+    // 2. Call the API with photo + coordinates.
+    final success = await ref.read(todayRouteProvider.notifier).pickupOrder(
+      orderId:   stop.orderId,
+      photoPath: result.photoPath,
+      latitude:  result.latitude,
+      longitude: result.longitude,
+    );
+
+    if (!context.mounted) return;
+
+    // 3. Handle result.
+    if (success) {
+      await _showPickupSuccess(context);
+      if (!context.mounted) return;
+      onConfirmed();
+    } else {
+      final errorMessage =
+          ref.read(todayRouteProvider).pickupErrorMessage ??
+              'Unable to confirm pickup. Please try again.';
+      _toast(context, errorMessage);
+    }
   }
 
   void _toast(BuildContext context, String msg) {

@@ -22,8 +22,19 @@ class RouteRepository {
   Future<ApiResult<bool>> updateDriverStatus({required String status}) =>
       _datasource.updateDriverStatus(status: status);
 
-  Future<ApiResult<bool>> pickupOrder({required String orderId}) =>
-      _datasource.pickupOrder(orderId: orderId);
+// CHANGED: now requires photoPath, latitude, longitude for the new API.
+  Future<ApiResult<PickupConfirmationResponse>> pickupOrder({
+    required String orderId,
+    required String photoPath,
+    required double latitude,
+    required double longitude,
+  }) =>
+      _datasource.pickupOrder(
+        orderId:   orderId,
+        photoPath: photoPath,
+        latitude:  latitude,
+        longitude: longitude,
+      );
 }
 
 final routeRepositoryProvider = Provider<RouteRepository>(

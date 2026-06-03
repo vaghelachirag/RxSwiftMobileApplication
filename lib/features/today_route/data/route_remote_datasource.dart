@@ -1,32 +1,129 @@
 // ============================================================================
 // lib/features/today_route/data/route_remote_datasource.dart
 //
-// Network layer for the driver-route feature.
+// Uses the central DioClient — NOT a raw Dio instance.
 //
-// Uses the central DioClient — NOT a raw Dio instance — so every call gets:
-//   • Bearer token via the auth interceptor
-//   • Connectivity guard (NoInternetException on offline)
-//   • Envelope unwrapping (response.data automatically becomes the `data:` field)
-//   • DioException → NetworkException conversion via networkExceptionFromError
-//
-// Result: each datasource method is a one-liner around DioClient.get/patch<T>
-// and returns ApiResult<T> directly.
+// CHANGE: pickupOrder() now sends multipart/form-data (PATCH) with:
+//   Photo     — compressed JPEG (case-sensitive, PascalCase)
+//   Latitude  — driver latitude  as string
+//   Longitude — driver longitude as string
 // ============================================================================
 
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/network/api_result.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../uttils/RouteApiConstants.dart';
 import '../model/route_model.dart';
 
+// ── Pickup confirmation response ──────────────────────────────────────────
+// Maps the inner `data` object returned by the new pickup API.
+
+class PickupConfirmationResponse {
+  const PickupConfirmationResponse({
+    required this.id,
+    required this.orderNumber,
+    required this.status,
+    required this.statusLabel,
+    required this.pickupImageUrl,
+    required this.pickupLatitude,
+    required this.pickupLongitude,
+    required this.pickedUpAt,
+  });
+
+  final String  id;
+  final String  orderNumber;
+  final String  status;
+  final String  statusLabel;
+  final String  pickupImageUrl;
+  final double? pickupLatitude;
+  final double? pickupLongitude;
+  final String? pickedUpAt;
+
+  factory PickupConfirmationResponse.fromJson(Map<String, dynamic> json) {
+    return PickupConfirmationResponse(
+      id:              json['id']             as String?  ?? '',
+      orderNumber:     json['orderNumber']    as String?  ?? '',
+      status:          json['status']         as String?  ?? '',
+      statusLabel:     json['statusLabel']    as String?  ?? '',
+      pickupImageUrl:  json['pickupImageUrl'] as String?  ?? '',
+      pickupLatitude:  (json['pickupLatitude']  as num?)?.toDouble(),
+      pickupLongitude: (json['pickupLongitude'] as num?)?.toDouble(),
+      pickedUpAt:      json['pickedUpAt']     as String?,
+    );
+  }
+}
+
+// ── Datasource ────────────────────────────────────────────────────────────
+
 class RouteRemoteDatasource {
   RouteRemoteDatasource(this._dioClient);
   final DioClient _dioClient;
 
-  // ── Today's route ──────────────────────────────────────────
-  // DioClient unwraps the {success, message, data} envelope, so `json` here
-  // is already the inner `data` object.
+  // ── Image compression ──────────────────────────────────────────────────
+  static const int _targetBytes  = 8 * 1024 * 1024; // 8 MB
+  static const int _startQuality = 85;
+  static const int _minQuality   = 40;
+  static const int _qualityStep  = 15;
+
+  Future<File> _compressImage(File source) async {
+    final originalSize = await source.length();
+    if (originalSize <= _targetBytes) {
+      debugPrint(
+        '📷 [Pickup] Already under limit '
+            '(${(originalSize / 1024 / 1024).toStringAsFixed(2)} MB), skipping.',
+      );
+      return source;
+    }
+
+    debugPrint(
+      '📷 [Pickup] Compressing '
+          '(${(originalSize / 1024 / 1024).toStringAsFixed(2)} MB)...',
+    );
+
+    final tempDir    = await getTemporaryDirectory();
+    final targetPath =
+        '${tempDir.path}/pickup_compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    int    quality = _startQuality;
+    XFile? result;
+
+    do {
+      result = await FlutterImageCompress.compressAndGetFile(
+        source.absolute.path,
+        targetPath,
+        quality:   quality,
+        format:    CompressFormat.jpeg,
+        minWidth:  1920,
+        minHeight: 1920,
+      );
+
+      if (result == null) {
+        debugPrint('⚠️ [Pickup] Compression failed, using original.');
+        return source;
+      }
+
+      final size = await result.length();
+      debugPrint(
+        '📷 [Pickup] Quality $quality → '
+            '${(size / 1024 / 1024).toStringAsFixed(2)} MB',
+      );
+
+      if (size <= _targetBytes) break;
+      quality -= _qualityStep;
+    } while (quality >= _minQuality);
+
+    return File(result!.path);
+  }
+
+  // ── Today's route ──────────────────────────────────────────────────────
+
   Future<ApiResult<TodayRoute>> getTodayRoute() {
     return _dioClient.get<TodayRoute>(
       RouteApiConstants.todayRoute,
@@ -34,47 +131,53 @@ class RouteRemoteDatasource {
     );
   }
 
-  // ── Update driver status (e.g. "2" → on route) ─────────────
-  // Response shape isn't important to the caller — collapse to `true`.
+  // ── Update driver status ────────────────────────────────────────────────
+
   Future<ApiResult<bool>> updateDriverStatus({required String status}) {
     return _dioClient.patch<bool>(
       RouteApiConstants.driverStatus,
-      data: {'status': status},
+      data:     {'status': status},
       fromJson: (_) => true,
     );
   }
 
-  // ── Pickup a specific order ────────────────────────────────
-  // PATCH /driver/orders/{orderId}/pickup — no body required.
-  // Response may be empty, a bool, or an envelope — _parsePickupResponse
-  // handles every shape safely.
-  Future<ApiResult<bool>> pickupOrder({required String orderId}) {
-    return _dioClient.patch<bool>(
-      RouteApiConstants.pickupOrder(orderId),
-      fromJson: _parsePickupResponse,
-    );
-  }
+  // ── Pickup order  PATCH /api/driver/orders/{orderId}/pickup ────────────
+  //
+  // NEW: multipart/form-data body with three PascalCase fields:
+  //   Photo     — compressed JPEG file
+  //   Latitude  — driver latitude  as plain string  e.g. "23.012"
+  //   Longitude — driver longitude as plain string  e.g. "72.5108"
 
-  bool _parsePickupResponse(dynamic data) {
-    if (data is bool) return data;
-    if (data == null) return true; // 2xx with empty body → success
-    if (data is Map<String, dynamic>) {
-      return data['success'] == true ||
-          data['status'] == true ||
-          data['statusCode'] == 200 ||
-          data['statusCode'] == 201 ||
-          data['statusCode'] == 204;
-    }
-    return true; // any other 2xx body still counts as success
+  Future<ApiResult<PickupConfirmationResponse>> pickupOrder({
+    required String orderId,
+    required String photoPath,
+    required double latitude,
+    required double longitude,
+  }) async {
+    // Compress before building the multipart body.
+    final compressed = await _compressImage(File(photoPath));
+
+    final formData = FormData.fromMap({
+      'Photo': await MultipartFile.fromFile(
+        compressed.path,
+        filename:    'pickup_photo.jpg',
+        contentType: DioMediaType.parse('image/jpeg'),
+      ),
+      'Latitude':  latitude.toString(),
+      'Longitude': longitude.toString(),
+    });
+
+    return _dioClient.patch<PickupConfirmationResponse>(
+      RouteApiConstants.pickupOrder(orderId),
+      data:     formData,
+      fromJson: (json) =>
+          PickupConfirmationResponse.fromJson(json as Map<String, dynamic>),
+    );
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Provider
-//
-//  IMPORTANT: this passes the shared DioClient (with interceptors) — NOT a
-//  bare `Dio()`. Bare Dio bypasses the auth + connectivity + envelope logic.
-// ─────────────────────────────────────────────────────────────
+// ── Provider ───────────────────────────────────────────────────────────────
+
 final routeRemoteDatasourceProvider = Provider<RouteRemoteDatasource>(
       (ref) => RouteRemoteDatasource(ref.watch(dioClientProvider)),
 );

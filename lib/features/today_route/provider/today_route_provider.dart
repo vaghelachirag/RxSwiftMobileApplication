@@ -1,9 +1,9 @@
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_result.dart';
 import '../../../uttils/app_constants.dart';
+import '../data/route_remote_datasource.dart';
 import '../data/route_repository.dart';
 import '../model/route_model.dart';
 
@@ -141,7 +141,12 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
   }
 
 
-  Future<bool> pickupOrder(String orderId) async {
+  Future<bool> pickupOrder({
+    required String orderId,
+    required String photoPath,
+    required double latitude,
+    required double longitude,
+  }) async {
     // Validate input.
     if (orderId.isEmpty) {
       state = state.copyWith(
@@ -156,24 +161,29 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
     }
 
     state = state.copyWith(
-      isPickupLoading: true,
+      isPickupLoading:     true,
       activePickupOrderId: orderId,
-      clearPickupError: true,
+      clearPickupError:    true,
     );
 
-    final result = await _repository.pickupOrder(orderId: orderId);
+    final result = await _repository.pickupOrder(
+      orderId:   orderId,
+      photoPath: photoPath,
+      latitude:  latitude,
+      longitude: longitude,
+    );
 
     switch (result) {
-      case ApiSuccess(:final data):
+      case ApiSuccess<PickupConfirmationResponse>():
         state = state.copyWith(
-          isPickupLoading: false,
+          isPickupLoading:  false,
           clearActivePickup: true,
         );
-        return data;
-      case ApiFailure(:final exception):
+        return true;
+      case ApiFailure<PickupConfirmationResponse>(:final exception):
         state = state.copyWith(
-          isPickupLoading: false,
-          clearActivePickup: true,
+          isPickupLoading:    false,
+          clearActivePickup:  true,
           pickupErrorMessage: exception.message,
         );
         return false;
