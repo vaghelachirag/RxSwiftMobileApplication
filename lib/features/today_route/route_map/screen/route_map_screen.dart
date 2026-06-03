@@ -380,9 +380,14 @@ class _LoadedBody extends ConsumerWidget {
 
   Future<void> _openFailedDelivery(
       BuildContext context, RouteStop stop) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FailedDeliveryScreen()),
-    );
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => FailedDeliveryScreen(
+        orderId:      stop.orderId,
+        customerName: stop.patientName,
+        address:      stop.address,
+        pharmacyName: stop.pharmacyName,
+      ),
+    ));
   }
 }
 

@@ -35,15 +35,27 @@ import '../widgets/reason_dropdown.dart';
 import '../widgets/submit_status_banner.dart';
 
 class FailedDeliveryScreen extends ConsumerWidget {
-  const FailedDeliveryScreen({super.key});
+  const FailedDeliveryScreen({
+    super.key,
+    required this.orderId,
+    this.customerName = '',
+    this.address      = '',
+    this.pharmacyName = '',
+  });
+
+  /// The UUID from RouteStop.id — used as the family key and API path param.
+  final String orderId;
+  final String customerName;
+  final String address;
+  final String pharmacyName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(failedDeliveryControllerProvider);
-    final controller = ref.read(failedDeliveryControllerProvider.notifier);
-    final order = ref.watch(failedDeliveryOrderProvider);
+    final state      = ref.watch(failedDeliveryControllerProvider(orderId));
+    final controller = ref.read(failedDeliveryControllerProvider(orderId).notifier);
+    final order      = ref.watch(failedDeliveryOrderProvider(orderId));
 
-    ref.listen<FailedDeliveryState>(failedDeliveryControllerProvider,
+    ref.listen<FailedDeliveryState>(failedDeliveryControllerProvider(orderId),
             (prev, next) {
           if (prev?.status != SubmitStatus.submitSuccess &&
               next.status == SubmitStatus.submitSuccess) {
@@ -59,6 +71,10 @@ class FailedDeliveryScreen extends ConsumerWidget {
                   ),
                 ),
               );
+            // Pop back to route map with true → caller can advance the stop
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (context.mounted) Navigator.of(context).maybePop(true);
+            });
           }
         });
 
@@ -129,16 +145,16 @@ class FailedDeliveryScreen extends ConsumerWidget {
           },
         ),
       ),
-      bottomNavigationBar: _SubmitBar(state: state, controller: controller),
+      bottomNavigationBar: _SubmitBar(state: state, onSubmit: controller.submit),
     );
   }
 }
 
 class _SubmitBar extends StatelessWidget {
-  const _SubmitBar({required this.state, required this.controller});
+  const _SubmitBar({required this.state, required this.onSubmit});
 
   final FailedDeliveryState state;
-  final FailedDeliveryController controller;
+  final VoidCallback        onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -149,24 +165,21 @@ class _SubmitBar extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(
             RouteSpacing.lg, RouteSpacing.md, RouteSpacing.lg, RouteSpacing.md),
         decoration: const BoxDecoration(
-          color: RouteColors.surface,
+          color:  RouteColors.surface,
           border: Border(top: BorderSide(color: RouteColors.cardBorder)),
           boxShadow: RouteShadows.sheet,
         ),
         child: SizedBox(
           height: 54,
-          width: double.infinity,
+          width:  double.infinity,
           child: ElevatedButton(
-            onPressed: enabled ? controller.submit : null,
+            onPressed: enabled ? onSubmit : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor: RouteColors.danger,
-              // If you added `disabledDanger` to RouteColors, use it here:
-              //   disabledBackgroundColor: RouteColors.disabledDanger,
-              // Otherwise leave the inline tint below.
+              backgroundColor:         RouteColors.danger,
               disabledBackgroundColor: const Color(0xFFEBC9C9),
-              foregroundColor: Colors.white,
+              foregroundColor:         Colors.white,
               disabledForegroundColor: Colors.white,
-              elevation: 0,
+              elevation:  0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -174,14 +187,13 @@ class _SubmitBar extends StatelessWidget {
             child: state.isSubmitting
                 ? const SizedBox(
               height: 22,
-              width: 22,
+              width:  22,
               child: CircularProgressIndicator(
                 strokeWidth: 2.5,
                 valueColor: AlwaysStoppedAnimation(Colors.white),
               ),
             )
-                : Text('Submit Report',
-                style: RouteText.button(Colors.white)),
+                : Text('Submit Report', style: RouteText.button(Colors.white)),
           ),
         ),
       ),

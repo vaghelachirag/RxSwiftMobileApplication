@@ -64,7 +64,7 @@ class DeliveryRepository {
   Future<String?> captureFromCamera() async {
     final xFile = await _picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 85,
+      imageQuality: 72,   // first-pass reduction before upload compression
     );
     return xFile?.path;
   }

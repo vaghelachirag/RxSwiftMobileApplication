@@ -33,4 +33,11 @@ class RouteApiConstants {
   /// PATCH /api/driver/location
   /// Body: { latitude, longitude, speedKph, heading }
   static const String driverLocation = '/driver/location';
+
+
+
+  /// POST /api/driver/orders/{orderId}/fail
+  static String failOrder(String orderId) =>
+      '/driver/orders/$orderId/fail';
+
 }

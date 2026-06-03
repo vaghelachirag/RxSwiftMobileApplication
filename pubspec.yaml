@@ -59,6 +59,7 @@ dependencies:
   # Utils
   shared_preferences: ^2.2.3
 
+  flutter_image_compress: ^2.3.0
 
 
 dev_dependencies:
