@@ -1,11 +1,5 @@
 // ============================================================================
 // features/today_route/route_map/screen/route_map_screen.dart
-//
-// KEY CHANGE vs original:
-//   • `_openDeliveryConfirmation` now passes `stop.id` and a `DeliveryOrderArgs`
-//     built from the live RouteStop fields into DeliveryConfirmationScreen.
-//   • No other logic changed — pickup, navigation, failed delivery are untouched.
-// ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -199,7 +193,7 @@ class _LoadedBody extends ConsumerWidget {
         required VoidCallback onConfirmed,
       }) async {
     final args = DeliveryOrderArgs(
-      orderId: stop.id,                    // ← real UUID from the API
+      orderId: stop.id,
       customerName: stop.patientName,
       address: stop.address,
       pharmacyName: stop.pharmacyName,
@@ -209,8 +203,10 @@ class _LoadedBody extends ConsumerWidget {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => DeliveryConfirmationScreen(
-          orderId: stop.id,   // ← family key for the controller
-          orderArgs: args,    // ← display data for the UI cards
+          orderId: stop.id,
+          orderArgs: args,
+          deliveryAddress: '',
+          pharmacyName: '', customerName: '',
         ),
       ),
     );

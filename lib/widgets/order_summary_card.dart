@@ -9,9 +9,12 @@ import '../theme/app_theme.dart';
 
 
 class OrderSummaryCard extends StatelessWidget {
-  const OrderSummaryCard({super.key, required this.order});
+  const OrderSummaryCard({super.key, required this.orderId,required this.customerName,required this.address,required this.pharmacyName});
 
-  final DeliveryOrder order;
+  final orderId;
+  final customerName;
+  final address;
+  final pharmacyName;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +54,7 @@ class OrderSummaryCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      order.customerName,
+                      customerName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -62,7 +65,7 @@ class OrderSummaryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Order ${order.orderId}',
+                      'Order $orderId',
                       style: const TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -71,7 +74,7 @@ class OrderSummaryCard extends StatelessWidget {
                     const SizedBox(height: AppSpacing.sm),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: _StatusPill(label: order.statusLabel),
+                      child: _StatusPill(label: ""),
                     ),
                   ],
                 ),
@@ -84,13 +87,13 @@ class OrderSummaryCard extends StatelessWidget {
           _InfoRow(
             icon: Icons.location_on_outlined,
             label: 'Delivery address',
-            value: order.address,
+            value: address,
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             icon: Icons.local_pharmacy_outlined,
             label: 'Pharmacy',
-            value: order.pharmacyName,
+            value: pharmacyName,
           ),
         ],
       ),

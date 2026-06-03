@@ -1,16 +1,5 @@
 // ============================================================================
 // lib/features/delivery_confirm/presentation/screens/delivery_confirmation_screen.dart
-//
-// KEY CHANGE vs original:
-//   • Constructor now accepts `orderId` (required) and `orderArgs` (optional
-//     rich order info). Both are forwarded to the family providers so every
-//     API call uses the real RouteStop UUID — nothing is hardcoded.
-//   • Provider watch calls updated to family syntax:
-//       deliveryControllerProvider(orderId)
-//       deliveryOrderProvider(orderArgs)
-//   • All styling / layout / child widgets unchanged.
-// ============================================================================
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/features/delivery_confirm/provider/delivery_confirmation_provider.dart';
@@ -27,15 +16,17 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
   const DeliveryConfirmationScreen({
     super.key,
     required this.orderId,
+    required this.customerName,
+    required this.deliveryAddress,
+    required this.pharmacyName,
     this.orderArgs,
   });
 
-  /// The UUID from RouteStop.id — used as the family key for the controller
-  /// and forwarded to the API upload call.
   final String orderId;
+  final String customerName;
+  final String deliveryAddress;
+  final String pharmacyName;
 
-  /// Optional rich order details to display in the UI. When null the screen
-  /// shows minimal info (just the orderId is needed for the API call).
   final DeliveryOrderArgs? orderArgs;
 
   @override
@@ -48,13 +39,12 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
     final effectiveArgs = orderArgs ??
         DeliveryOrderArgs(
           orderId: orderId,
-          customerName: 'Patient',
-          address: '',
-          pharmacyName: '',
+          customerName: customerName,
+          address: deliveryAddress,
+          pharmacyName: pharmacyName,
         );
     final order = ref.watch(deliveryOrderProvider(effectiveArgs));
 
-    // Surface uploadSuccess as a themed SnackBar.
     ref.listen<DeliveryState>(deliveryControllerProvider(orderId),
             (prev, next) {
           if (prev?.status != DeliveryStatus.uploadSuccess &&
@@ -108,7 +98,7 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      OrderSummaryCard(order: order),
+                      OrderSummaryCard(orderId: orderId,customerName: order.customerName,address: order.address,pharmacyName: order.pharmacyName),
                       const SizedBox(height: RouteSpacing.lg),
                       const InstructionCard(),
                       const SizedBox(height: RouteSpacing.lg),

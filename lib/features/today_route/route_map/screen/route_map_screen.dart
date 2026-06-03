@@ -403,7 +403,7 @@ class _LoadedBody extends ConsumerWidget {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
           builder: (_) =>
-              DeliveryConfirmationScreen(orderId: stop.orderId)),
+              DeliveryConfirmationScreen(orderId: stop.orderId,customerName:"Patient Name:${stop.patientName}",deliveryAddress: stop.address,pharmacyName: stop.pharmacyName)),
     );
     if (result == true) onConfirmed();
   }

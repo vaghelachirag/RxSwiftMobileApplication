@@ -47,8 +47,6 @@ class OrderSummaryCard extends StatelessWidget {
                     color: AppColors.danger),
               ),
               const SizedBox(width: AppSpacing.md),
-              // Expanded column means the pill stacks below the name and can
-              // never fight it for horizontal space (no overflow).
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

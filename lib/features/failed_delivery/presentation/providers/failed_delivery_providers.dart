@@ -1,17 +1,3 @@
-// ============================================================================
-// lib/features/failed_delivery/presentation/providers/failed_delivery_providers.dart
-//
-// Riverpod providers + StateNotifier controlling the failed-delivery report.
-//
-// KEY CHANGES vs original:
-//   • Repository now receives FailedDeliveryRemoteDataSource (DioClient-based)
-//   • failedDeliveryOrderProvider is a .family keyed on orderId so the real
-//     RouteStop UUID is forwarded to the API — nothing hardcoded
-//   • Controller.submit() builds FailedDeliveryReport with a single photoPath
-//     (API accepts one Photo field); first photo in the list is used
-//   • onProgress removed — DioClient.post() does not expose onSendProgress
-// ============================================================================
-
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +8,21 @@ import '../../domain/failed_delivery_state.dart';
 
 // ── Infrastructure providers ──────────────────────────────────────────────
 
+class FailedDeliveryArgs {
+  final String orderId;
+  final String customerName;
+  final String address;
+  final String pharmacyName;
+
+  const FailedDeliveryArgs({
+    required this.orderId,
+    required this.customerName,
+    required this.address,
+    required this.pharmacyName,
+  });
+}
+
+
 final failedDeliveryRepositoryProvider =
 Provider<FailedDeliveryRepository>((ref) {
   return FailedDeliveryRepository(
@@ -29,20 +30,15 @@ Provider<FailedDeliveryRepository>((ref) {
   );
 });
 
-// ── Order provider (family keyed on orderId) ──────────────────────────────
-// Accepts the real RouteStop UUID from the navigation args so every API
-// call uses the correct path parameter.
 
 final failedDeliveryOrderProvider =
-Provider.family<DeliveryOrder, String>((ref, orderId) {
-  // Customer details are passed via the navigation args in the screen;
-  // orderId is the only field strictly required for the API call.
+Provider.family<DeliveryOrder, FailedDeliveryArgs>((ref, args) {
   return DeliveryOrder(
-    orderId:      orderId,
-    customerName: '',
-    address:      '',
-    pharmacyName: '',
-    statusLabel:  'Attempt failed',
+    orderId: args.orderId,
+    customerName: args.customerName,
+    address: args.address,
+    pharmacyName: args.pharmacyName,
+    statusLabel: 'Attempt failed',
   );
 });
 
@@ -188,10 +184,12 @@ class FailedDeliveryController extends StateNotifier<FailedDeliveryState> {
 // ── Controller provider (family keyed on orderId) ─────────────────────────
 
 final failedDeliveryControllerProvider = StateNotifierProvider.family<
-    FailedDeliveryController, FailedDeliveryState, String>(
-      (ref, orderId) {
-    final repo  = ref.watch(failedDeliveryRepositoryProvider);
-    final order = ref.watch(failedDeliveryOrderProvider(orderId));
-    return FailedDeliveryController(repo, order);
-  },
-);
+    FailedDeliveryController,
+    FailedDeliveryState,
+    FailedDeliveryArgs>((ref, args) {
+
+  final repo = ref.watch(failedDeliveryRepositoryProvider);
+  final order = ref.watch(failedDeliveryOrderProvider(args));
+
+  return FailedDeliveryController(repo, order);
+});
