@@ -17,6 +17,11 @@ enum RouteStartStatus { idle, starting, active, completed }
 
 class TodayRouteState {
   const TodayRouteState({
+    // ── availability ──
+    this.isAvailable = false,
+    this.isAvailabilityUpdating = false,
+    this.availabilityErrorMessage,
+    // ── route load ──
     this.loadStatus = RouteLoadStatus.idle,
     this.startStatus = RouteStartStatus.idle,
     this.route,
@@ -27,11 +32,23 @@ class TodayRouteState {
     this.pickupErrorMessage,
   });
 
+  // ── Availability ─────────────────────────────────────────
+  /// Whether the driver has toggled themselves as available.
+  final bool isAvailable;
+
+  /// True while the availability PATCH call is in flight.
+  final bool isAvailabilityUpdating;
+
+  /// Set when the availability API call fails; cleared on next attempt.
+  final String? availabilityErrorMessage;
+
+  // ── Route load ───────────────────────────────────────────
   final RouteLoadStatus loadStatus;
   final RouteStartStatus startStatus;
   final TodayRoute? route;
   final String? errorMessage;
 
+  // ── Pickup ───────────────────────────────────────────────
   /// True while a pickup API call is in flight.
   final bool isPickupLoading;
 
@@ -42,6 +59,7 @@ class TodayRouteState {
   /// Last pickup error message, surfaced to the screen as a SnackBar.
   final String? pickupErrorMessage;
 
+  // ── Convenience getters ──────────────────────────────────
   bool get isLoading => loadStatus == RouteLoadStatus.loading;
   bool get isLoaded => loadStatus == RouteLoadStatus.loaded;
   bool get isError => loadStatus == RouteLoadStatus.error;
@@ -52,9 +70,16 @@ class TodayRouteState {
       route?.stops.where((s) => s.status == StopStatus.completed).length ?? 0;
 
   TodayRouteState copyWith({
+    // availability
+    bool? isAvailable,
+    bool? isAvailabilityUpdating,
+    String? availabilityErrorMessage,
+    bool clearAvailabilityError = false,
+    // route load
     RouteLoadStatus? loadStatus,
     RouteStartStatus? startStatus,
     TodayRoute? route,
+    bool clearRoute = false,
     String? errorMessage,
     bool clearError = false,
     // pickup
@@ -65,9 +90,15 @@ class TodayRouteState {
     bool clearPickupError = false,
   }) {
     return TodayRouteState(
+      isAvailable: isAvailable ?? this.isAvailable,
+      isAvailabilityUpdating:
+      isAvailabilityUpdating ?? this.isAvailabilityUpdating,
+      availabilityErrorMessage: clearAvailabilityError
+          ? null
+          : (availabilityErrorMessage ?? this.availabilityErrorMessage),
       loadStatus: loadStatus ?? this.loadStatus,
       startStatus: startStatus ?? this.startStatus,
-      route: route ?? this.route,
+      route: clearRoute ? null : (route ?? this.route),
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       isPickupLoading: isPickupLoading ?? this.isPickupLoading,
       activePickupOrderId: clearActivePickup
@@ -86,12 +117,70 @@ class TodayRouteState {
 
 class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
   TodayRouteNotifier(this._repository) : super(const TodayRouteState()) {
-    loadRoute();
+    // Do NOT call loadRoute() here. Route is only loaded once the driver
+    // explicitly toggles availability ON.
   }
 
   final RouteRepository _repository;
 
+  // ── Availability ──────────────────────────────────────────────────────────
+
+  /// Called when the driver flips the availability switch.
+  ///
+  /// - Guards against duplicate taps while an update is already in flight.
+  /// - On success, loads the route (if turning ON) or clears state (if OFF).
+  /// - On failure, reverts the switch and surfaces an error via
+  ///   [availabilityErrorMessage].
+  Future<void> toggleAvailability(bool newValue) async {
+    // Guard: ignore if already updating or if value hasn't changed.
+    if (state.isAvailabilityUpdating) return;
+    if (state.isAvailable == newValue) return;
+
+    state = state.copyWith(
+      isAvailabilityUpdating: true,
+      clearAvailabilityError: true,
+    );
+
+    final result = await _repository.updateDriverAvailability(
+      isAvailable: newValue,
+    );
+
+    switch (result) {
+      case ApiSuccess():
+        if (newValue) {
+          // Driver turned ON — persist the new value then fetch route.
+          state = state.copyWith(
+            isAvailable: true,
+            isAvailabilityUpdating: false,
+          );
+          await loadRoute();
+        } else {
+          // Driver turned OFF — clear all route data.
+          state = state.copyWith(
+            isAvailable: false,
+            isAvailabilityUpdating: false,
+            loadStatus: RouteLoadStatus.idle,
+            startStatus: RouteStartStatus.idle,
+            clearRoute: true,
+            clearError: true,
+          );
+        }
+
+      case ApiFailure(:final exception):
+      // Revert — state.isAvailable stays at its previous value.
+        state = state.copyWith(
+          isAvailabilityUpdating: false,
+          availabilityErrorMessage: exception.message,
+        );
+    }
+  }
+
+  // ── Route loading ─────────────────────────────────────────────────────────
+
   Future<void> loadRoute() async {
+    // Safety: never load when the driver is unavailable.
+    if (!state.isAvailable) return;
+
     state = state.copyWith(
       loadStatus: RouteLoadStatus.loading,
       clearError: true,
@@ -112,6 +201,8 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
         );
     }
   }
+
+  // ── Route start ───────────────────────────────────────────────────────────
 
   Future<void> startRoute() async {
     if (state.route == null || state.route!.stops.isEmpty) return;
@@ -140,6 +231,7 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
     }
   }
 
+  // ── Pickup ────────────────────────────────────────────────────────────────
 
   Future<bool> pickupOrder({
     required String orderId,
@@ -147,7 +239,6 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
     required double latitude,
     required double longitude,
   }) async {
-    // Validate input.
     if (orderId.isEmpty) {
       state = state.copyWith(
         pickupErrorMessage: 'Invalid order. Please refresh and try again.',
@@ -161,34 +252,36 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
     }
 
     state = state.copyWith(
-      isPickupLoading:     true,
+      isPickupLoading: true,
       activePickupOrderId: orderId,
-      clearPickupError:    true,
+      clearPickupError: true,
     );
 
     final result = await _repository.pickupOrder(
-      orderId:   orderId,
+      orderId: orderId,
       photoPath: photoPath,
-      latitude:  latitude,
+      latitude: latitude,
       longitude: longitude,
     );
 
     switch (result) {
       case ApiSuccess<PickupConfirmationResponse>():
         state = state.copyWith(
-          isPickupLoading:  false,
+          isPickupLoading: false,
           clearActivePickup: true,
         );
         return true;
       case ApiFailure<PickupConfirmationResponse>(:final exception):
         state = state.copyWith(
-          isPickupLoading:    false,
-          clearActivePickup:  true,
+          isPickupLoading: false,
+          clearActivePickup: true,
           pickupErrorMessage: exception.message,
         );
         return false;
     }
   }
+
+  // ── Stop lifecycle ────────────────────────────────────────────────────────
 
   void markStopCompleted(String stopId) {
     _setStopStatus(stopId, StopStatus.completed);
@@ -215,6 +308,8 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
     state = state.copyWith(route: state.route!.copyWith(stops: updated));
   }
 
+  // ── Maps ──────────────────────────────────────────────────────────────────
+
   /// Opens the stop in Google Maps. Uses coordinates when present, otherwise
   /// falls back to a text address search.
   Future<bool> openInGoogleMaps(RouteStop stop) async {
@@ -232,6 +327,8 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
     }
     return false;
   }
+
+  // ── Public helpers ────────────────────────────────────────────────────────
 
   void refresh() => loadRoute();
 }

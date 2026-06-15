@@ -40,4 +40,7 @@ class RouteApiConstants {
   static String failOrder(String orderId) =>
       '/driver/orders/$orderId/fail';
 
+
+  static const String driverAvailability = '/driver/status';
+
 }

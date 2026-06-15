@@ -141,12 +141,19 @@ class RouteRemoteDatasource {
     );
   }
 
-  // ── Pickup order  PATCH /api/driver/orders/{orderId}/pickup ────────────
-  //
-  // NEW: multipart/form-data body with three PascalCase fields:
-  //   Photo     — compressed JPEG file
-  //   Latitude  — driver latitude  as plain string  e.g. "23.012"
-  //   Longitude — driver longitude as plain string  e.g. "72.5108"
+  // ── Update driver availability  PATCH /api/driver/availability ────────
+
+  Future<ApiResult<void>> updateDriverAvailability({
+    required bool isAvailable,
+  }) {
+    return _dioClient.patch<void>(
+      RouteApiConstants.driverAvailability,
+      data:     {'status': isAvailable ? '1' : '0'},
+      fromJson: (_) {},
+    );
+  }
+
+
 
   Future<ApiResult<PickupConfirmationResponse>> pickupOrder({
     required String orderId,

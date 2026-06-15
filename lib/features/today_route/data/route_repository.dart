@@ -22,6 +22,11 @@ class RouteRepository {
   Future<ApiResult<bool>> updateDriverStatus({required String status}) =>
       _datasource.updateDriverStatus(status: status);
 
+  Future<ApiResult<void>> updateDriverAvailability({
+    required bool isAvailable,
+  }) =>
+      _datasource.updateDriverAvailability(isAvailable: isAvailable);
+
 // CHANGED: now requires photoPath, latitude, longitude for the new API.
   Future<ApiResult<PickupConfirmationResponse>> pickupOrder({
     required String orderId,

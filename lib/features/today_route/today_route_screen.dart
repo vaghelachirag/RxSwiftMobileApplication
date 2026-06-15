@@ -16,28 +16,37 @@ class TodayRouteScreen extends ConsumerWidget {
     final state = ref.watch(todayRouteProvider);
     final notifier = ref.read(todayRouteProvider.notifier);
 
+    // Show availability error as SnackBar and immediately clear it.
+    ref.listen<TodayRouteState>(todayRouteProvider, (previous, next) {
+      final msg = next.availabilityErrorMessage;
+      if (msg != null &&
+          msg != previous?.availabilityErrorMessage &&
+          context.mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(msg, style: const TextStyle(fontFamily: 'Poppins')),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
+    });
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: AppColors.background,
-        appBar: _RouteAppBar(),
+        appBar: _RouteAppBar(state: state, notifier: notifier),
         body: SafeArea(
           top: false,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 350),
-            child: state.isLoading
-                ? const _LoadingView()
-                : state.isError
-                ? _ErrorView(
-                    message: state.errorMessage ?? 'Something went wrong.',
-                    onRetry: () => notifier.refresh(),
-                  )
-                : state.isLoaded
-                ? _RouteBody(state: state)
-                : const _LoadingView(),
+            child: _buildBody(state, notifier),
           ),
         ),
-        bottomNavigationBar: state.isLoaded
+        bottomNavigationBar: (state.isAvailable && state.isLoaded)
             ? _BottomBar(
           state: state,
           onStart: () async {
@@ -45,12 +54,10 @@ class TodayRouteScreen extends ConsumerWidget {
             if (context.mounted) {
               Navigator.of(context).push(
                 PageRouteBuilder(
-                  pageBuilder: (_, __, ___) =>
-                  const RouteMapScreen(),
+                  pageBuilder: (_, __, ___) => const RouteMapScreen(),
                   transitionsBuilder: (_, anim, __, child) =>
                       FadeTransition(opacity: anim, child: child),
-                  transitionDuration:
-                  const Duration(milliseconds: 400),
+                  transitionDuration: const Duration(milliseconds: 400),
                 ),
               );
             }
@@ -59,6 +66,33 @@ class TodayRouteScreen extends ConsumerWidget {
             : null,
       ),
     );
+  }
+
+  Widget _buildBody(TodayRouteState state, TodayRouteNotifier notifier) {
+    // Driver is unavailable — show the prompt.
+    if (!state.isAvailable) {
+      return const _AvailabilityRequiredView(key: ValueKey('unavailable'));
+    }
+
+    // Driver is available — show normal load/error/content states.
+    if (state.isLoading) {
+      return const _LoadingView(key: ValueKey('loading'));
+    }
+
+    if (state.isError) {
+      return _ErrorView(
+        key: const ValueKey('error'),
+        message: state.errorMessage ?? 'Something went wrong.',
+        onRetry: notifier.refresh,
+      );
+    }
+
+    if (state.isLoaded) {
+      return _RouteBody(key: const ValueKey('body'), state: state);
+    }
+
+    // Fallback while availability was just toggled ON and loadRoute starts.
+    return const _LoadingView(key: ValueKey('loading-fallback'));
   }
 }
 
@@ -70,15 +104,20 @@ class TodayRouteScaffold extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  AppBar
+//  AppBar  (with availability switch)
 // ─────────────────────────────────────────────────────────────
 
-class _RouteAppBar extends StatelessWidget implements PreferredSizeWidget {
+class _RouteAppBar extends ConsumerWidget implements PreferredSizeWidget {
+  const _RouteAppBar({required this.state, required this.notifier});
+
+  final TodayRouteState state;
+  final TodayRouteNotifier notifier;
+
   @override
   Size get preferredSize => const Size.fromHeight(56);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return AppBar(
       backgroundColor: AppColors.background,
       elevation: 0,
@@ -99,6 +138,123 @@ class _RouteAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       titleSpacing: 0,
       centerTitle: false,
+      actions: [
+        _AvailabilitySwitch(state: state, notifier: notifier),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Availability switch widget (label + toggle)
+// ─────────────────────────────────────────────────────────────
+
+class _AvailabilitySwitch extends StatelessWidget {
+  const _AvailabilitySwitch({required this.state, required this.notifier});
+
+  final TodayRouteState state;
+  final TodayRouteNotifier notifier;
+
+  @override
+  Widget build(BuildContext context) {
+    final isOn = state.isAvailable;
+    final isUpdating = state.isAvailabilityUpdating;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: isUpdating
+              ? const SizedBox(
+            key: ValueKey('spinner'),
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation(AppColors.primary),
+            ),
+          )
+              : Text(
+            key: ValueKey(isOn),
+            isOn ? 'Available' : 'Offline',
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isOn ? AppColors.primary : AppColors.textSecondary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Transform.scale(
+          scale: 0.80,
+          child: Switch.adaptive(
+            value: isOn,
+            onChanged: isUpdating ? null : notifier.toggleAvailability,
+            activeColor: AppColors.primary,
+            inactiveThumbColor: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Availability required view
+// ─────────────────────────────────────────────────────────────
+
+class _AvailabilityRequiredView extends StatelessWidget {
+  const _AvailabilityRequiredView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 36),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.toggle_off_rounded,
+                size: 52,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'You are currently offline',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Please turn on availability to find today\'s task list.',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -108,7 +264,7 @@ class _RouteAppBar extends StatelessWidget implements PreferredSizeWidget {
 // ─────────────────────────────────────────────────────────────
 
 class _LoadingView extends StatelessWidget {
-  const _LoadingView();
+  const _LoadingView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +279,7 @@ class _LoadingView extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 
 class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
+  const _ErrorView({super.key, required this.message, required this.onRetry});
   final String message;
   final VoidCallback onRetry;
 
@@ -161,7 +317,7 @@ class _ErrorView extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             ),
           ],
@@ -176,7 +332,7 @@ class _ErrorView extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 
 class _RouteBody extends ConsumerWidget {
-  const _RouteBody({required this.state});
+  const _RouteBody({super.key, required this.state});
   final TodayRouteState state;
 
   @override
@@ -284,7 +440,6 @@ class _TimelineStop extends StatelessWidget {
       case StopStatus.skipped:
         return AppColors.textSecondary;
       case StopStatus.pending:
-      // Figma uses green for the numbered bubbles
         return AppColors.success;
     }
   }
@@ -342,8 +497,7 @@ class _TimelineStop extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Timeline Painter — draws the connector line behind the bubble
-//  so the bubble can sit centered on the card.
+//  Timeline Painter
 // ─────────────────────────────────────────────────────────────
 
 class _TimelinePainter extends CustomPainter {
@@ -393,7 +547,7 @@ class _TimelinePainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Stop Card (clean white card, name + address, time on right)
+//  Stop Card
 // ─────────────────────────────────────────────────────────────
 
 class _StopCard extends StatelessWidget {
@@ -419,111 +573,112 @@ class _StopCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-          color: isInProgress
-              ? AppColors.teal.withOpacity(0.40)
-              : AppColors.border.withOpacity(0.60),
-          width: isInProgress ? 1.2 : 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // ── Name + Address ─────────────────────────────────
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  stop.patientName,
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: isCompleted
-                        ? AppColors.textSecondary
-                        : AppColors.textPrimary,
-                    decoration: isCompleted
-                        ? TextDecoration.lineThrough
-                        : TextDecoration.none,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  stop.address,
-                  style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: AppColors.textSecondary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (isInProgress) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 30,
-                    child: ElevatedButton.icon(
-                      onPressed: onMarkDone,
-                      icon: const Icon(Icons.check_rounded, size: 14),
-                      label: const Text(
-                        'Mark as Done',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.teal,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                          BorderRadius.circular(AppRadius.full),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+          duration: const Duration(milliseconds: 300),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(
+              color: isInProgress
+                  ? AppColors.teal.withOpacity(0.40)
+                  : AppColors.border.withOpacity(0.60),
+              width: isInProgress ? 1.2 : 1,
             ),
-          ),
-
-          const SizedBox(width: 10),
-
-          // ── Pickup/Drop label + tap-to-navigate affordance ──
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              _TypeChip(type: stop.stopType, dimmed: isCompleted),
-              const SizedBox(height: 8),
-              Icon(
-                Icons.directions_rounded,
-                size: 18,
-                color: isCompleted
-                    ? AppColors.textHint
-                    : AppColors.primary,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-        ],
-      ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // ── Name + Address ─────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      stop.patientName,
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: isCompleted
+                            ? AppColors.textSecondary
+                            : AppColors.textPrimary,
+                        decoration: isCompleted
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      stop.address,
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.textSecondary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (isInProgress) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 30,
+                        child: ElevatedButton.icon(
+                          onPressed: onMarkDone,
+                          icon: const Icon(Icons.check_rounded, size: 14),
+                          label: const Text(
+                            'Mark as Done',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.teal,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding:
+                            const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(AppRadius.full),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // ── Pickup/Drop label + tap-to-navigate affordance ──
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _TypeChip(type: stop.stopType, dimmed: isCompleted),
+                  const SizedBox(height: 8),
+                  Icon(
+                    Icons.directions_rounded,
+                    size: 18,
+                    color: isCompleted
+                        ? AppColors.textHint
+                        : AppColors.primary,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -564,7 +719,7 @@ class _TypeChip extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Number Bubble  (filled green circle with number or ✓)
+//  Number Bubble  (filled circle with number or ✓)
 // ─────────────────────────────────────────────────────────────
 
 class _NumberBubble extends StatelessWidget {
