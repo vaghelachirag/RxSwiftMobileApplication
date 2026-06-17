@@ -6,7 +6,9 @@ import 'package:rxswift/features/today_route/route_map/screen/route_map_screen.d
 
 import '../../theme/app_theme.dart';
 import '../../widgets/app_progress_dialoug.dart';
+import '../route_details/route_detail_screen.dart';
 import 'model/route_model.dart';
+
 
 class TodayRouteScreen extends ConsumerWidget {
   const TodayRouteScreen({super.key});
@@ -16,7 +18,6 @@ class TodayRouteScreen extends ConsumerWidget {
     final state = ref.watch(todayRouteProvider);
     final notifier = ref.read(todayRouteProvider.notifier);
 
-    // Show availability error as SnackBar and immediately clear it.
     ref.listen<TodayRouteState>(todayRouteProvider, (previous, next) {
       final msg = next.availabilityErrorMessage;
       if (msg != null &&
@@ -38,12 +39,25 @@ class TodayRouteScreen extends ConsumerWidget {
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: AppColors.background,
-        appBar: _RouteAppBar(state: state, notifier: notifier),
         body: SafeArea(
-          top: false,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
-            child: _buildBody(state, notifier),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Top bar: availability toggle ──────────────────
+              _TopBar(state: state, notifier: notifier),
+
+              // ── Page header ───────────────────────────────────
+              if (state.isAvailable && state.isLoaded)
+                _PageHeader(totalStops: state.route?.totalStops ?? 0),
+
+              // ── Body ──────────────────────────────────────────
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  child: _buildBody(context, state, notifier, ref),
+                ),
+              ),
+            ],
           ),
         ),
         bottomNavigationBar: (state.isAvailable && state.isLoaded)
@@ -68,17 +82,14 @@ class TodayRouteScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildBody(TodayRouteState state, TodayRouteNotifier notifier) {
-    // Driver is unavailable — show the prompt.
+  Widget _buildBody(BuildContext context, TodayRouteState state,
+      TodayRouteNotifier notifier, WidgetRef ref) {
     if (!state.isAvailable) {
       return const _AvailabilityRequiredView(key: ValueKey('unavailable'));
     }
-
-    // Driver is available — show normal load/error/content states.
     if (state.isLoading) {
       return const _LoadingView(key: ValueKey('loading'));
     }
-
     if (state.isError) {
       return _ErrorView(
         key: const ValueKey('error'),
@@ -86,12 +97,9 @@ class TodayRouteScreen extends ConsumerWidget {
         onRetry: notifier.refresh,
       );
     }
-
     if (state.isLoaded) {
       return _RouteBody(key: const ValueKey('body'), state: state);
     }
-
-    // Fallback while availability was just toggled ON and loadRoute starts.
     return const _LoadingView(key: ValueKey('loading-fallback'));
   }
 }
@@ -104,55 +112,11 @@ class TodayRouteScaffold extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  AppBar  (with availability switch)
+//  Top Bar  (availability toggle, no title here)
 // ─────────────────────────────────────────────────────────────
 
-class _RouteAppBar extends ConsumerWidget implements PreferredSizeWidget {
-  const _RouteAppBar({required this.state, required this.notifier});
-
-  final TodayRouteState state;
-  final TodayRouteNotifier notifier;
-
-  @override
-  Size get preferredSize => const Size.fromHeight(56);
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return AppBar(
-      backgroundColor: AppColors.background,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-        color: AppColors.textPrimary,
-        onPressed: () => Navigator.of(context).maybePop(),
-      ),
-      title: const Text(
-        "Today's Route",
-        style: TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textPrimary,
-        ),
-      ),
-      titleSpacing: 0,
-      centerTitle: false,
-      actions: [
-        _AvailabilitySwitch(state: state, notifier: notifier),
-        const SizedBox(width: 8),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Availability switch widget (label + toggle)
-// ─────────────────────────────────────────────────────────────
-
-class _AvailabilitySwitch extends StatelessWidget {
-  const _AvailabilitySwitch({required this.state, required this.notifier});
-
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.state, required this.notifier});
   final TodayRouteState state;
   final TodayRouteNotifier notifier;
 
@@ -161,49 +125,117 @@ class _AvailabilitySwitch extends StatelessWidget {
     final isOn = state.isAvailable;
     final isUpdating = state.isAvailabilityUpdating;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: isUpdating
-              ? const SizedBox(
-            key: ValueKey('spinner'),
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation(AppColors.primary),
-            ),
-          )
-              : Text(
-            key: ValueKey(isOn),
-            isOn ? 'Available' : 'Offline',
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isOn ? AppColors.primary : AppColors.textSecondary,
-            ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Invisible spacer to balance layout
+          const SizedBox(width: 80),
+
+          // ── Availability toggle (centered) ────────────────────
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: isUpdating
+                    ? const SizedBox(
+                  key: ValueKey('spinner'),
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor:
+                    AlwaysStoppedAnimation(AppColors.primary),
+                  ),
+                )
+                    : Text(
+                  key: ValueKey(isOn),
+                  isOn ? 'Available' : 'Offline',
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isOn
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              Transform.scale(
+                scale: 0.85,
+                child: Switch.adaptive(
+                  value: isOn,
+                  onChanged: isUpdating ? null : notifier.toggleAvailability,
+                  activeColor: AppColors.primary,
+                  inactiveThumbColor: AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(width: 6),
-        Transform.scale(
-          scale: 0.80,
-          child: Switch.adaptive(
-            value: isOn,
-            onChanged: isUpdating ? null : notifier.toggleAvailability,
-            activeColor: AppColors.primary,
-            inactiveThumbColor: AppColors.textSecondary,
+
+          // ── Right placeholder (notification bell or avatar) ───
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.border),
+            ),
+            child: const Icon(Icons.notifications_none_rounded,
+                size: 20, color: AppColors.textSecondary),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Availability required view
+//  Page Header  "Tasks / Today (N)"
+// ─────────────────────────────────────────────────────────────
+
+class _PageHeader extends StatelessWidget {
+  const _PageHeader({required this.totalStops});
+  final int totalStops;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Tasks',
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 26,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Today ($totalStops)',
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Availability Required View
 // ─────────────────────────────────────────────────────────────
 
 class _AvailabilityRequiredView extends StatelessWidget {
@@ -328,7 +360,7 @@ class _ErrorView extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Main Body
+//  Main Body  (grouped list)
 // ─────────────────────────────────────────────────────────────
 
 class _RouteBody extends ConsumerWidget {
@@ -338,90 +370,159 @@ class _RouteBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final route = state.route!;
+    final stops = route.stops;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── Sub-header ────────────────────────────────────────
-        _SubHeader(route: route),
+    // Build a list of items: groups of stops by storeName (or patientName
+    // when there's no store). Each group shows a "X more tasks" separator
+    // between the first stop and the rest, mirroring the target design.
+    final List<_ListItem> items = _buildItems(stops);
 
-        const SizedBox(height: 8),
-
-        // ── Timeline list ─────────────────────────────────────
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            itemCount: route.stops.length,
-            itemBuilder: (context, index) {
-              final stop = route.stops[index];
-              final isFirst = index == 0;
-              final isLast = index == route.stops.length - 1;
-              return _TimelineStop(
-                stop: stop,
-                isFirst: isFirst,
-                isLast: isLast,
-                isRouteActive: state.isRouteActive,
-                onMarkDone: () => ref
-                    .read(todayRouteProvider.notifier)
-                    .markStopCompleted(stop.id),
-                onOpenMaps: () async {
-                  final ok = await ref
-                      .read(todayRouteProvider.notifier)
-                      .openInGoogleMaps(stop);
-                  if (!ok && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Could not open Google Maps.'),
-                      ),
-                    );
-                  }
-                },
-              );
-            },
-          ),
-        ),
-      ],
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        switch (item) {
+          case _StopItem(:final stop, :final isFirst, :final isLast):
+            return _TaskCard(
+              stop: stop,
+              isFirst: isFirst,
+              isLast: isLast,
+              isRouteActive: state.isRouteActive,
+              onMarkDone: () => ref
+                  .read(todayRouteProvider.notifier)
+                  .markStopCompleted(stop.id),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => RouteDetailScreen(stop: stop),
+                  ),
+                );
+              },
+            );
+          case _CollapseItem(:final count, :final groupLabel):
+            return _MoreTasksDivider(count: count, label: groupLabel);
+        }
+      },
     );
+  }
+
+  List<_ListItem> _buildItems(List<RouteStop> stops) {
+    if (stops.isEmpty) return [];
+
+    // Group consecutive stops that share the same store/patient name.
+    final groups = <_StopGroup>[];
+    _StopGroup? current;
+
+    for (final stop in stops) {
+      final key = stop.patientName; // use patientName as group key
+      if (current == null || current.key != key) {
+        current = _StopGroup(key: key, stops: [stop]);
+        groups.add(current);
+      } else {
+        current.stops.add(stop);
+      }
+    }
+
+    final items = <_ListItem>[];
+    for (final group in groups) {
+      final groupStops = group.stops;
+      for (int i = 0; i < groupStops.length; i++) {
+        final isFirst = i == 0;
+        final isLast = i == groupStops.length - 1;
+
+        // After the first stop in a group, insert the "X more tasks" banner
+        // before the remaining stops (only when the group has > 1 stop).
+        if (i == 1 && groupStops.length > 1) {
+          items.add(_CollapseItem(
+            count: groupStops.length - 1,
+            groupLabel: group.key,
+          ));
+        }
+
+        items.add(_StopItem(
+          stop: groupStops[i],
+          isFirst: isFirst,
+          isLast: isLast,
+        ));
+      }
+    }
+    return items;
   }
 }
 
+// ── List item sealed types ────────────────────────────────────
+
+sealed class _ListItem {}
+
+class _StopItem extends _ListItem {
+  _StopItem({required this.stop, required this.isFirst, required this.isLast});
+  final RouteStop stop;
+  final bool isFirst;
+  final bool isLast;
+}
+
+class _CollapseItem extends _ListItem {
+  _CollapseItem({required this.count, required this.groupLabel});
+  final int count;
+  final String groupLabel;
+}
+
+class _StopGroup {
+  _StopGroup({required this.key, required this.stops});
+  final String key;
+  final List<RouteStop> stops;
+}
+
 // ─────────────────────────────────────────────────────────────
-//  Sub-header  "4 Stops · 10:00 PM Pickup"
+//  "X more tasks" divider row
 // ─────────────────────────────────────────────────────────────
 
-class _SubHeader extends StatelessWidget {
-  const _SubHeader({required this.route});
-  final TodayRoute route;
+class _MoreTasksDivider extends StatelessWidget {
+  const _MoreTasksDivider({required this.count, required this.label});
+  final int count;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-      child: Text(
-        '${route.totalStops} Stops · ${route.pickupTime} Pickup',
-        style: const TextStyle(
-          fontFamily: 'Poppins',
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: AppColors.textSecondary,
-        ),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 18,
+            child: Divider(color: AppColors.border, thickness: 1),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$count more task${count > 1 ? 's' : ''}',
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(child: Divider(color: AppColors.border, thickness: 1)),
+        ],
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Timeline Stop  (number bubble + connector line + card)
+//  Task Card  (matches target screenshot style)
 // ─────────────────────────────────────────────────────────────
 
-class _TimelineStop extends StatelessWidget {
-  const _TimelineStop({
+class _TaskCard extends StatelessWidget {
+  const _TaskCard({
     required this.stop,
     required this.isFirst,
     required this.isLast,
     required this.isRouteActive,
     required this.onMarkDone,
-    required this.onOpenMaps,
+    required this.onTap,
   });
 
   final RouteStop stop;
@@ -429,7 +530,7 @@ class _TimelineStop extends StatelessWidget {
   final bool isLast;
   final bool isRouteActive;
   final VoidCallback onMarkDone;
-  final VoidCallback onOpenMaps;
+  final VoidCallback onTap;
 
   Color get _bubbleColor {
     switch (stop.status) {
@@ -449,238 +550,199 @@ class _TimelineStop extends StatelessWidget {
     final isCompleted = stop.status == StopStatus.completed;
     final isInProgress = stop.status == StopStatus.inProgress;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Timeline column (connector + centered bubble) ────
-          SizedBox(
-            width: 36,
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
-              child: CustomPaint(
-                painter: _TimelinePainter(
-                  lineColor: AppColors.border,
-                  drawTopHalf: !isFirst,
-                  drawBottomHalf: !isLast,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(
+                color: isInProgress
+                    ? AppColors.teal.withOpacity(0.35)
+                    : AppColors.border.withOpacity(0.70),
+                width: isInProgress ? 1.2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
-                child: Center(
-                  child: _NumberBubble(
-                    number: stop.stopNumber,
+              ],
+            ),
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Status bubble ─────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: _StatusBubble(
                     color: _bubbleColor,
                     isCompleted: isCompleted,
                   ),
                 ),
-              ),
+                const SizedBox(width: 12),
+
+                // ── Content ───────────────────────────────────────
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Store / patient name
+                      Text(
+                        stop.patientName,
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isCompleted
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                          decoration: isCompleted
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      // Address
+                      Text(
+                        stop.address,
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      // Service type row
+                      Text(
+                        'Service Type: - Regular',
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Order number + chip + ready time
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '#${stop.orderId.length > 8 ? stop.orderId.substring(0, 8) : stop.orderId}',
+                              style: const TextStyle(
+                                fontFamily: 'Poppins',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.textSecondary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _TypeChip(
+                              type: stop.stopType, dimmed: isCompleted),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Ready now',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                              color: isCompleted
+                                  ? AppColors.textHint
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Mark done button (only when in-progress)
+                      if (isInProgress) ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 30,
+                          child: ElevatedButton.icon(
+                            onPressed: onMarkDone,
+                            icon:
+                            const Icon(Icons.check_rounded, size: 14),
+                            label: const Text(
+                              'Mark as Done',
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.teal,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                    AppRadius.full),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 10),
+
+                // ── Maps icon ─────────────────────────────────────
+                Icon(
+                  Icons.near_me_rounded,
+                  size: 20,
+                  color:
+                  isCompleted ? AppColors.textHint : AppColors.textSecondary,
+                ),
+              ],
             ),
           ),
-
-          const SizedBox(width: 12),
-
-          // ── Card ─────────────────────────────────────────────
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
-              child: _StopCard(
-                stop: stop,
-                isInProgress: isInProgress,
-                isCompleted: isCompleted,
-                onMarkDone: onMarkDone,
-                onTap: onOpenMaps,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Timeline Painter
+//  Status Bubble  (filled circle with ✓ or empty ring)
 // ─────────────────────────────────────────────────────────────
 
-class _TimelinePainter extends CustomPainter {
-  _TimelinePainter({
-    required this.lineColor,
-    required this.drawTopHalf,
-    required this.drawBottomHalf,
-  });
-
-  final Color lineColor;
-  final bool drawTopHalf;
-  final bool drawBottomHalf;
-
-  static const double _bubbleRadius = 15;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = lineColor
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-
-    final centerX = size.width / 2;
-    final centerY = size.height / 2;
-
-    if (drawTopHalf) {
-      canvas.drawLine(
-        Offset(centerX, 0),
-        Offset(centerX, centerY - _bubbleRadius - 2),
-        paint,
-      );
-    }
-    if (drawBottomHalf) {
-      canvas.drawLine(
-        Offset(centerX, centerY + _bubbleRadius + 2),
-        Offset(centerX, size.height),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _TimelinePainter old) =>
-      old.lineColor != lineColor ||
-          old.drawTopHalf != drawTopHalf ||
-          old.drawBottomHalf != drawBottomHalf;
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Stop Card
-// ─────────────────────────────────────────────────────────────
-
-class _StopCard extends StatelessWidget {
-  const _StopCard({
-    required this.stop,
-    required this.isInProgress,
-    required this.isCompleted,
-    required this.onMarkDone,
-    required this.onTap,
-  });
-
-  final RouteStop stop;
-  final bool isInProgress;
+class _StatusBubble extends StatelessWidget {
+  const _StatusBubble({required this.color, required this.isCompleted});
+  final Color color;
   final bool isCompleted;
-  final VoidCallback onMarkDone;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(
-              color: isInProgress
-                  ? AppColors.teal.withOpacity(0.40)
-                  : AppColors.border.withOpacity(0.60),
-              width: isInProgress ? 1.2 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // ── Name + Address ─────────────────────────────────
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      stop.patientName,
-                      style: TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: isCompleted
-                            ? AppColors.textSecondary
-                            : AppColors.textPrimary,
-                        decoration: isCompleted
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      stop.address,
-                      style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        color: AppColors.textSecondary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (isInProgress) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 30,
-                        child: ElevatedButton.icon(
-                          onPressed: onMarkDone,
-                          icon: const Icon(Icons.check_rounded, size: 14),
-                          label: const Text(
-                            'Mark as Done',
-                            style: TextStyle(
-                              fontFamily: 'Poppins',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.teal,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                              BorderRadius.circular(AppRadius.full),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              const SizedBox(width: 10),
-
-              // ── Pickup/Drop label + tap-to-navigate affordance ──
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _TypeChip(type: stop.stopType, dimmed: isCompleted),
-                  const SizedBox(height: 8),
-                  Icon(
-                    Icons.directions_rounded,
-                    size: 18,
-                    color: isCompleted
-                        ? AppColors.textHint
-                        : AppColors.primary,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: isCompleted ? color : Colors.transparent,
+        shape: BoxShape.circle,
+        border: isCompleted ? null : Border.all(color: color, width: 2),
       ),
+      child: isCompleted
+          ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+          : null,
     );
   }
 }
@@ -700,67 +762,18 @@ class _TypeChip extends StatelessWidget {
     final base = isPickup ? AppColors.success : AppColors.primary;
     final color = dimmed ? AppColors.textHint : base;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withOpacity(0.10),
         borderRadius: BorderRadius.circular(AppRadius.full),
       ),
       child: Text(
         type.label,
         style: TextStyle(
           fontFamily: 'Poppins',
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: FontWeight.w700,
           color: color,
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Number Bubble  (filled circle with number or ✓)
-// ─────────────────────────────────────────────────────────────
-
-class _NumberBubble extends StatelessWidget {
-  const _NumberBubble({
-    required this.number,
-    required this.color,
-    required this.isCompleted,
-  });
-
-  final int number;
-  final Color color;
-  final bool isCompleted;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.25),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Center(
-        child: isCompleted
-            ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
-            : Text(
-          '$number',
-          style: const TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
         ),
       ),
     );
@@ -789,8 +802,9 @@ class _BottomBar extends StatelessWidget {
         20,
         MediaQuery.of(context).padding.bottom + 12,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
+        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
       ),
       child: SizedBox(
         height: 52,
