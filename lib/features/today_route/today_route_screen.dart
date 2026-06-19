@@ -423,12 +423,15 @@ class _RouteBody extends ConsumerWidget {
               onMarkDone: () => ref
                   .read(todayRouteProvider.notifier)
                   .markStopCompleted(stop.id),
-              onTap: () {
-                Navigator.of(context).push(
+              onTap: () async {
+                final result = await Navigator.of(context).push<bool>(
                   MaterialPageRoute(
                     builder: (_) => RouteDetailScreen(stop: stop),
                   ),
                 );
+                if (result == true) {
+                  ref.read(todayRouteProvider.notifier).markStopCompleted(stop.id);
+                }
               },
             );
           case _CollapseItem(:final count, :final groupLabel):

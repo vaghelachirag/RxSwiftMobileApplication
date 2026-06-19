@@ -352,7 +352,7 @@ class _LoadedBody extends ConsumerWidget {
 
     // 3. Handle result.
     if (success) {
-      await _showPickupSuccess(context);
+      await showPickupSuccess(context);
       if (!context.mounted) return;
       onConfirmed();
     } else {
@@ -373,16 +373,6 @@ class _LoadedBody extends ConsumerWidget {
         backgroundColor: RouteColors.tealDark,
         duration: const Duration(milliseconds: 1400),
       ));
-  }
-
-  Future<void> _showPickupSuccess(BuildContext context) {
-    return showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: RouteColors.teal.withOpacity(0.96),
-      transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (_, __, ___) => const _PickupSuccessContent(),
-    );
   }
 
   void _startTurnByTurnNavigation(
@@ -527,54 +517,3 @@ class _EmptyView extends StatelessWidget {
   }
 }
 
-class _PickupSuccessContent extends StatefulWidget {
-  const _PickupSuccessContent();
-
-  @override
-  State<_PickupSuccessContent> createState() =>
-      _PickupSuccessContentState();
-}
-
-class _PickupSuccessContentState extends State<_PickupSuccessContent> {
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) Navigator.of(context).pop();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.check_rounded,
-                size: 38, color: Colors.white),
-          ),
-          const SizedBox(height: 14),
-          const Text('Picked Up!',
-              style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white)),
-          const SizedBox(height: 4),
-          Text('Moving to next stop…',
-              style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 13,
-                  color: Colors.white.withOpacity(0.85))),
-        ],
-      ),
-    );
-  }
-}

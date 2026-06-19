@@ -5,7 +5,11 @@ import 'package:rxswift/features/route_details/route_detail_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/app_theme.dart';
+import '../delivery_confirm/delivery_confirm_screen.dart';
 import '../today_route/model/route_model.dart';
+import '../today_route/provider/today_route_provider.dart';
+import '../today_route/route_map/widgets/pickup_photo_sheet.dart';
+import 'model/order_detail_model.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  Entry point
@@ -74,20 +78,38 @@ class RouteDetailScreen extends ConsumerWidget {
         ),
 
         // ── Scrollable body ─────────────────────────────────────
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Section header
-              const _SectionHeader(title: 'Details'),
-              const SizedBox(height: 12),
+        body: _buildBody(state, notifier, isPickup),
+      ),
+    );
+  }
 
-              // Detail card
-              _DetailCard(stop: stop),
-            ],
-          ),
-        ),
+  Widget _buildBody(
+      RouteDetailState state, RouteDetailNotifier notifier, bool isPickup) {
+    final detail = state.orderDetail;
+
+    if (state.isLoading && detail == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (state.isError && detail == null) {
+      return _ErrorView(
+        message: state.errorMessage ?? 'Something went wrong',
+        onRetry: notifier.fetchOrderDetail,
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section header
+          const _SectionHeader(title: 'Details'),
+          const SizedBox(height: 12),
+
+          // Detail card
+          _DetailCard(stop: stop, detail: detail, isPickup: isPickup),
+        ],
       ),
     );
   }
@@ -117,7 +139,7 @@ class RouteDetailScreen extends ConsumerWidget {
     notifier.setNavigating(false);
   }
 
-  // ── Arrived: pop back with result so caller can act ───────────
+  // ── Arrived ──────────────────────────────────────────────────────
 
   Future<void> _onArrived(
       BuildContext context,
@@ -125,11 +147,107 @@ class RouteDetailScreen extends ConsumerWidget {
       RouteDetailNotifier notifier,
       ) async {
     if (ref.read(routeDetailProvider(stop.orderId)).isArriving) return;
+
+    // Pickup tasks run the same photo + location confirmation flow as the
+    // route map screen instead of just popping back.
+    if (stop.stopType == StopType.pickup) {
+      await _handlePickup(context, ref, notifier);
+      return;
+    }
+
+    // Drop-off tasks open the same delivery confirmation screen used by the
+    // route map screen.
+    await _openDeliveryConfirmation(context, notifier);
+  }
+
+  // ── Pickup: show photo + location sheet, then call API ───────────
+  //
+  // Mirrors RouteMapScreen._handlePickup so pickup confirmation behaves
+  // identically whether it's triggered from the map or this detail screen.
+
+  Future<void> _handlePickup(
+      BuildContext context,
+      WidgetRef ref,
+      RouteDetailNotifier notifier,
+      ) async {
+    if (stop.orderId.isEmpty) {
+      _toast(context, 'Invalid order. Please refresh and try again.');
+      return;
+    }
+
     notifier.setArriving(true);
 
-    // Pop with `true` so the list screen can mark the stop arrived / trigger
-    // the pickup or delivery confirmation flow.
-    if (context.mounted) Navigator.of(context).pop(true);
+    // 1. Show the pickup photo + location popup.
+    final result = await showPickupPhotoSheet(context, stopAddress: stop.address);
+
+    // Driver dismissed the sheet without confirming.
+    if (result == null || !context.mounted) {
+      notifier.setArriving(false);
+      return;
+    }
+
+    // 2. Call the API with photo + coordinates.
+    final success = await ref.read(todayRouteProvider.notifier).pickupOrder(
+      orderId: stop.orderId,
+      photoPath: result.photoPath,
+      latitude: result.latitude,
+      longitude: result.longitude,
+    );
+
+    if (!context.mounted) return;
+    notifier.setArriving(false);
+
+    // 3. Handle result.
+    if (success) {
+      await showPickupSuccess(context);
+      if (!context.mounted) return;
+      Navigator.of(context).pop(true);
+    } else {
+      final errorMessage = ref.read(todayRouteProvider).pickupErrorMessage ??
+          'Unable to confirm pickup. Please try again.';
+      _toast(context, errorMessage);
+    }
+  }
+
+  void _toast(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg,
+            style: const TextStyle(fontFamily: 'Poppins', fontSize: 13)),
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+
+  // ── Delivery: open confirmation screen ────────────────────────────
+  //
+  // Mirrors RouteMapScreen._openDeliveryConfirmation so drop-off
+  // confirmation behaves identically whether it's triggered from the map
+  // or this detail screen.
+
+  Future<void> _openDeliveryConfirmation(
+      BuildContext context,
+      RouteDetailNotifier notifier,
+      ) async {
+    notifier.setArriving(true);
+
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => DeliveryConfirmationScreen(
+          orderId: stop.orderId,
+          customerName: 'Patient Name:${stop.patientName}',
+          deliveryAddress: stop.address,
+          pharmacyName: stop.pharmacyName,
+        ),
+      ),
+    );
+
+    if (!context.mounted) return;
+    notifier.setArriving(false);
+
+    if (result == true) {
+      Navigator.of(context).pop(true);
+    }
   }
 }
 
@@ -160,12 +278,44 @@ class _SectionHeader extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 
 class _DetailCard extends StatelessWidget {
-  const _DetailCard({required this.stop});
+  const _DetailCard({
+    required this.stop,
+    required this.detail,
+    required this.isPickup,
+  });
+
   final RouteStop stop;
+  final OrderDetail? detail;
+  final bool isPickup;
 
   @override
   Widget build(BuildContext context) {
-    final isPickup = stop.stopType == StopType.pickup;
+    // ── Field values — prefer fresh API detail, fall back to the stop
+    //    summary already known from the route list ────────────────────
+    final companyName = _firstNonEmpty([detail?.pharmacyName, stop.pharmacyName]);
+
+    final address = _firstNonEmpty([
+      isPickup ? detail?.pharmacyAddress : detail?.deliveryAddress,
+      stop.address,
+    ]);
+
+    final orderTrackingNumber =
+        _firstNonEmpty([detail?.orderNumber, stop.orderNumber]);
+
+    final serviceType = _firstNonEmpty([detail?.handlingType]);
+
+    final contactName = _firstNonEmpty([detail?.patientName, stop.patientName]);
+
+    final phone = _firstNonEmpty([
+      isPickup ? detail?.pharmacyPhone : detail?.patientPhone,
+      stop.patientPhone,
+    ]);
+
+    final pickupOrDeliveryLabel = isPickup ? 'Pick up time' : 'Delivery window';
+    final pickupOrDeliveryValue = _firstNonEmpty([detail?.pickupWindowLabel]);
+
+    final notes = _firstNonEmpty(
+        [isPickup ? null : detail?.deliveryNotes, stop.notes]);
 
     return Container(
       width: double.infinity,
@@ -184,19 +334,14 @@ class _DetailCard extends StatelessWidget {
       child: Column(
         children: [
           // ── Company / Pharmacy Name ──────────────────────────
-          _DetailRow(
-            label: 'Company Name',
-            value: stop.pharmacyName.isNotEmpty ? stop.pharmacyName : 'N/A',
-          ),
+          _DetailRow(label: 'Company Name', value: companyName),
           _Divider(),
 
           // ── Address ──────────────────────────────────────────
           _DetailRow(
             label: 'Address',
-            value: stop.address.isNotEmpty ? stop.address : 'N/A',
-            trailing: stop.hasCoordinates
-                ? _CopyIcon(text: stop.address)
-                : null,
+            value: address,
+            trailing: address != 'N/A' ? _CopyIcon(text: address) : null,
           ),
           _Divider(),
 
@@ -205,17 +350,11 @@ class _DetailCard extends StatelessWidget {
           _Divider(),
 
           // ── Order Placed By ──────────────────────────────────
-          _DetailRow(
-            label: 'Order Placed By',
-            value: stop.pharmacyName.isNotEmpty ? stop.pharmacyName : 'N/A',
-          ),
+          _DetailRow(label: 'Order Placed By', value: companyName),
           _Divider(),
 
           // ── Order Tracking # ─────────────────────────────────
-          _DetailRow(
-            label: 'Order Tracking #',
-            value: stop.orderNumber.isNotEmpty ? stop.orderNumber : 'N/A',
-          ),
+          _DetailRow(label: 'Order Tracking #', value: orderTrackingNumber),
           _Divider(),
 
           // ── Customer Reference # ─────────────────────────────
@@ -223,20 +362,17 @@ class _DetailCard extends StatelessWidget {
           _Divider(),
 
           // ── Service Type ─────────────────────────────────────
-          _DetailRow(label: 'Service Type', value: '- Regular'),
+          _DetailRow(label: 'Service Type', value: serviceType),
           _Divider(),
 
           // ── Contact Name ─────────────────────────────────────
-          _DetailRow(
-            label: 'Contact Name',
-            value: stop.patientName.isNotEmpty ? stop.patientName : 'N/A',
-          ),
+          _DetailRow(label: 'Contact Name', value: contactName),
           _Divider(),
 
-          // ── Pick up time ─────────────────────────────────────
+          // ── Pick up time / Delivery window ───────────────────
           _DetailRow(
-            label: 'Pick up time',
-            value: 'Ready by 11:10 AM',
+            label: pickupOrDeliveryLabel,
+            value: pickupOrDeliveryValue,
           ),
           _Divider(),
 
@@ -270,22 +406,87 @@ class _DetailCard extends StatelessWidget {
           // ── Phone ────────────────────────────────────────────
           _DetailRow(
             label: 'Phone',
-            value: stop.patientPhone.isNotEmpty ? stop.patientPhone : 'N/A',
-            trailing: stop.patientPhone.isNotEmpty
-                ? _PhoneActions(phone: stop.patientPhone)
-                : null,
+            value: phone,
+            trailing: phone != 'N/A' ? _PhoneActions(phone: phone) : null,
           ),
 
-          // ── Notes (only if present) ──────────────────────────
-          if (stop.notes != null && stop.notes!.isNotEmpty) ...[
+          // ── Failure reason (only if the order failed) ────────
+          if (detail?.failureReason != null &&
+              detail!.failureReason!.isNotEmpty) ...[
+            _Divider(),
+            _DetailRow(
+              label: 'Failure Reason',
+              value: detail!.failureReason!,
+              valueColor: Colors.red,
+            ),
+          ],
+
+          // ── Notes (only if present) ───────────────────────────
+          if (notes != 'N/A') ...[
             _Divider(),
             _DetailRow(
               label: 'Notes',
-              value: stop.notes!,
+              value: notes,
               valueColor: AppColors.primary,
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  static String _firstNonEmpty(List<String?> values) {
+    for (final v in values) {
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return 'N/A';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Error state — shown when the order detail call fails
+// ─────────────────────────────────────────────────────────────
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline_rounded,
+                size: 40, color: AppColors.textSecondary),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: onRetry,
+              child: const Text(
+                'Retry',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -470,6 +671,12 @@ class _BottomActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).padding.bottom;
+    final isPickup = stop.stopType == StopType.pickup;
+    final arrivedLabel = isPickup
+        ? (isArriving ? 'Picking up…' : 'Order Pickup')
+        : (isArriving ? 'Opening…' : 'Confirm Delivery');
+    final arrivedIcon =
+        isPickup ? Icons.inventory_2_rounded : Icons.check_circle_outline_rounded;
 
     return Container(
       padding: EdgeInsets.fromLTRB(20, 12, 20, bottom + 12),
@@ -533,10 +740,10 @@ class _BottomActions extends StatelessWidget {
                     valueColor: AlwaysStoppedAnimation(Colors.white),
                   ),
                 )
-                    : const Icon(Icons.check_circle_outline_rounded, size: 18),
-                label: const Text(
-                  'Arrived',
-                  style: TextStyle(
+                    : Icon(arrivedIcon, size: 18),
+                label: Text(
+                  arrivedLabel,
+                  style: const TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 15,
                     fontWeight: FontWeight.w600,

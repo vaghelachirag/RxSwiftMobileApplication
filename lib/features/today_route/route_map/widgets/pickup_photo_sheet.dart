@@ -51,6 +51,72 @@ Future<PickupPhotoResult?> showPickupPhotoSheet(
   );
 }
 
+// ── Public helper: full-screen "Picked Up!" confirmation ──────────────────
+//
+// Shared by every screen that confirms a pickup (route map + route detail)
+// so the success animation stays identical and isn't duplicated.
+
+Future<void> showPickupSuccess(BuildContext context) {
+  return showGeneralDialog(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: RouteColors.teal.withOpacity(0.96),
+    transitionDuration: const Duration(milliseconds: 250),
+    pageBuilder: (_, __, ___) => const PickupSuccessContent(),
+  );
+}
+
+class PickupSuccessContent extends StatefulWidget {
+  const PickupSuccessContent({super.key});
+
+  @override
+  State<PickupSuccessContent> createState() => _PickupSuccessContentState();
+}
+
+class _PickupSuccessContentState extends State<PickupSuccessContent> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_rounded,
+                size: 38, color: Colors.white),
+          ),
+          const SizedBox(height: 14),
+          const Text('Picked Up!',
+              style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
+          const SizedBox(height: 4),
+          Text('Moving to next stop…',
+              style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 13,
+                  color: Colors.white.withOpacity(0.85))),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Sheet widget ──────────────────────────────────────────────────────────
 
 class _PickupPhotoSheet extends StatefulWidget {
