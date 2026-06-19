@@ -33,6 +33,22 @@ class TodayRouteScreen extends ConsumerWidget {
             ),
           );
       }
+
+      final acceptMsg = next.acceptErrorMessage;
+      if (acceptMsg != null &&
+          acceptMsg != previous?.acceptErrorMessage &&
+          context.mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content:
+              Text(acceptMsg, style: const TextStyle(fontFamily: 'Poppins')),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
     });
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -48,7 +64,11 @@ class TodayRouteScreen extends ConsumerWidget {
 
               // ── Page header ───────────────────────────────────
               if (state.isAvailable && state.isLoaded)
-                _PageHeader(totalStops: state.route?.totalStops ?? 0),
+                _PageHeader(
+                  totalStops: state.hasUnacceptedOrders
+                      ? state.unacceptedOrders.length
+                      : (state.route?.totalStops ?? 0),
+                ),
 
               // ── Body ──────────────────────────────────────────
               Expanded(
@@ -60,8 +80,14 @@ class TodayRouteScreen extends ConsumerWidget {
             ],
           ),
         ),
-        bottomNavigationBar: (state.isAvailable && state.isLoaded)
-            ? _BottomBar(
+        bottomNavigationBar: !(state.isAvailable && state.isLoaded)
+            ? null
+            : state.hasUnacceptedOrders
+            ? _AcceptOrderBottomBar(
+          state: state,
+          onAccept: notifier.acceptAllUnacceptedOrders,
+        )
+            : _BottomBar(
           state: state,
           onStart: () async {
             await notifier.startRoute();
@@ -76,8 +102,7 @@ class TodayRouteScreen extends ConsumerWidget {
               );
             }
           },
-        )
-            : null,
+        ),
       ),
     );
   }
@@ -98,6 +123,12 @@ class TodayRouteScreen extends ConsumerWidget {
       );
     }
     if (state.isLoaded) {
+      if (state.hasUnacceptedOrders) {
+        return _UnacceptedOrdersBody(
+          key: const ValueKey('unaccepted'),
+          orders: state.unacceptedOrders,
+        );
+      }
       return _RouteBody(key: const ValueKey('body'), state: state);
     }
     return const _LoadingView(key: ValueKey('loading-fallback'));
@@ -855,6 +886,338 @@ class _BottomBar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Unaccepted Orders  (shown before today's route is loaded)
+// ─────────────────────────────────────────────────────────────
+
+class _UnacceptedOrdersBody extends StatelessWidget {
+  const _UnacceptedOrdersBody({super.key, required this.orders});
+  final List<UnacceptedOrder> orders;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      itemCount: orders.length,
+      itemBuilder: (context, index) =>
+          _UnacceptedOrderCard(order: orders[index]),
+    );
+  }
+}
+
+class _UnacceptedOrderCard extends StatelessWidget {
+  const _UnacceptedOrderCard({required this.order});
+  final UnacceptedOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.border.withOpacity(0.70)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  order.patientName,
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (order.priority) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                  child: const Text(
+                    'Priority',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.warning,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          _IconLine(
+            icon: Icons.storefront_rounded,
+            text: order.pharmacyName,
+          ),
+          const SizedBox(height: 4),
+          _IconLine(
+            icon: Icons.location_on_rounded,
+            text: order.deliveryAddress,
+            maxLines: 2,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _InfoChip(text: '#${order.orderNumber}'),
+              if (order.handlingType.isNotEmpty)
+                _InfoChip(text: order.handlingType),
+              if (order.pickupWindowLabel.isNotEmpty)
+                _InfoChip(text: order.pickupWindowLabel),
+              if (order.statusLabel.isNotEmpty)
+                _InfoChip(text: order.statusLabel, emphasize: true),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IconLine extends StatelessWidget {
+  const _IconLine({required this.icon, required this.text, this.maxLines = 1});
+  final IconData icon;
+  final String text;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: AppColors.textSecondary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: maxLines,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.text, this.emphasize = false});
+  final String text;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = emphasize ? AppColors.teal : AppColors.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontFamily: 'Poppins',
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Bottom Bar  (Accept Order — swipe)
+// ─────────────────────────────────────────────────────────────
+
+class _AcceptOrderBottomBar extends StatelessWidget {
+  const _AcceptOrderBottomBar({required this.state, required this.onAccept});
+  final TodayRouteState state;
+  final VoidCallback onAccept;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        MediaQuery.of(context).padding.bottom + 12,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+      ),
+      child: _SwipeToAcceptButton(
+        label: 'Swipe to Accept Order',
+        isLoading: state.isAccepting,
+        onAccept: onAccept,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Swipe-to-accept slider control
+// ─────────────────────────────────────────────────────────────
+
+class _SwipeToAcceptButton extends StatefulWidget {
+  const _SwipeToAcceptButton({
+    required this.label,
+    required this.isLoading,
+    required this.onAccept,
+  });
+
+  final String label;
+  final bool isLoading;
+  final VoidCallback onAccept;
+
+  @override
+  State<_SwipeToAcceptButton> createState() => _SwipeToAcceptButtonState();
+}
+
+class _SwipeToAcceptButtonState extends State<_SwipeToAcceptButton> {
+  static const double _handleSize = 48;
+  static const double _trackPadding = 4;
+  static const double _acceptThreshold = 0.78;
+
+  double _dragX = 0;
+  bool _dragging = false;
+
+  @override
+  void didUpdateWidget(covariant _SwipeToAcceptButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Snap the handle back once a (failed) accept call finishes. On success
+    // the parent removes this order/rebuilds the list, so this widget is
+    // typically disposed before it matters — this only covers the retry case.
+    if (oldWidget.isLoading && !widget.isLoading) {
+      setState(() => _dragX = 0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxDrag =
+            constraints.maxWidth - _handleSize - _trackPadding * 2;
+        final progress =
+        maxDrag <= 0 ? 0.0 : (_dragX / maxDrag).clamp(0.0, 1.0);
+
+        return Container(
+          height: 56,
+          padding: const EdgeInsets.all(_trackPadding),
+          decoration: BoxDecoration(
+            color: AppColors.success.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(AppRadius.full),
+            border: Border.all(color: AppColors.success.withOpacity(0.25)),
+          ),
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Positioned.fill(
+                child: Center(
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 150),
+                    opacity: 1 - progress,
+                    child: Text(
+                      widget.label,
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedContainer(
+                duration: _dragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                margin: EdgeInsets.only(left: _dragX),
+                width: _handleSize,
+                height: _handleSize,
+                decoration: const BoxDecoration(
+                  color: AppColors.success,
+                  shape: BoxShape.circle,
+                ),
+                child: GestureDetector(
+                  onHorizontalDragStart: widget.isLoading
+                      ? null
+                      : (_) => setState(() => _dragging = true),
+                  onHorizontalDragUpdate: widget.isLoading || maxDrag <= 0
+                      ? null
+                      : (details) {
+                    setState(() {
+                      _dragX =
+                          (_dragX + details.delta.dx).clamp(0.0, maxDrag);
+                    });
+                  },
+                  onHorizontalDragEnd: widget.isLoading
+                      ? null
+                      : (_) {
+                    final accepted =
+                        maxDrag > 0 && _dragX >= maxDrag * _acceptThreshold;
+                    setState(() {
+                      _dragging = false;
+                      _dragX = accepted ? maxDrag : 0;
+                    });
+                    if (accepted) widget.onAccept();
+                  },
+                  child: widget.isLoading
+                      ? const Padding(
+                    padding: EdgeInsets.all(13),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                    ),
+                  )
+                      : const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

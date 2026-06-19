@@ -18,15 +18,13 @@ class RouteApiConstants {
 
   /// PATCH — pickup a specific order.
   /// Full URL: http://103.235.105.96:8086/api/driver/orders/{orderId}/pickup
-  static String pickupOrder(String orderId) =>
-      '/driver/orders/$orderId/pickup';
+  static String pickupOrder(String orderId) => '/driver/orders/$orderId/pickup';
 
   // ── Delivery-Confirm endpoints ────────────────────────────────────────────
 
   /// POST  /api/driver/orders/{orderId}/delivery-photo
   /// Content-Type: multipart/form-data   Field: Photo
-  static String deliveryPhoto(String orderId) =>
-      '/driver/orders/$orderId/delivery-photo';
+  static String deliveryPhoto(String orderId) => '/driver/orders/$orderId/delivery-photo';
 
   // ── Live Location Sync ────────────────────────────────────────────────────
 
@@ -35,12 +33,22 @@ class RouteApiConstants {
   static const String driverLocation = '/driver/location';
 
 
-
   /// POST /api/driver/orders/{orderId}/fail
   static String failOrder(String orderId) =>
       '/driver/orders/$orderId/fail';
 
 
   static const String driverAvailability = '/driver/status';
+
+  // ── Unaccepted orders ──────────────────────────────────────────────────
+
+  /// GET — orders assigned to the driver that are awaiting acceptance.
+  /// Full URL: http://103.235.105.96:8086/api/driver/orders/unaccepted
+  static const String unacceptedOrders = '/driver/orders/unaccepted';
+
+  /// PATCH — bulk-accept one or more unaccepted orders.
+  /// Full URL: http://103.235.105.96:8086/api/driver/orders/accept-bulk
+  /// Body: { "orderIds": ["..."] }
+  static const String acceptOrdersBulk = '/driver/orders/accept-bulk';
 
 }

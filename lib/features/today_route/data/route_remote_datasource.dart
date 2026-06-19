@@ -155,6 +155,27 @@ class RouteRemoteDatasource {
 
 
 
+  // ── Unaccepted orders  GET /api/driver/orders/unaccepted ──────────────
+
+  Future<ApiResult<List<UnacceptedOrder>>> getUnacceptedOrders() {
+    return _dioClient.get<List<UnacceptedOrder>>(
+      RouteApiConstants.unacceptedOrders,
+      fromJson: (json) => (json as List? ?? const [])
+          .map((e) => UnacceptedOrder.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  // ── Bulk-accept unaccepted orders  PATCH /api/driver/orders/accept-bulk ──
+
+  Future<ApiResult<bool>> acceptUnacceptedOrders(List<String> orderIds) {
+    return _dioClient.patch<bool>(
+      RouteApiConstants.acceptOrdersBulk,
+      data: {'orderIds': orderIds},
+      fromJson: (_) => true,
+    );
+  }
+
   Future<ApiResult<PickupConfirmationResponse>> pickupOrder({
     required String orderId,
     required String photoPath,

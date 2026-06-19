@@ -218,3 +218,84 @@ class TodayRoute {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Unaccepted order — GET /api/driver/orders/unaccepted
+// ─────────────────────────────────────────────────────────────
+
+/// An order assigned to the driver that is still awaiting acceptance, shown
+/// before today's route is loaded.
+@immutable
+class UnacceptedOrder {
+  const UnacceptedOrder({
+    required this.id,
+    required this.orderNumber,
+    required this.patientName,
+    required this.patientPhone,
+    required this.deliveryAddress,
+    required this.deliveryLatitude,
+    required this.deliveryLongitude,
+    required this.deliveryNotes,
+    required this.pharmacyName,
+    required this.pharmacyAddress,
+    required this.pharmacyPhone,
+    required this.pharmacyLatitude,
+    required this.pharmacyLongitude,
+    required this.status,
+    required this.statusLabel,
+    required this.pickupWindowLabel,
+    required this.handlingType,
+    required this.copayAmount,
+    required this.priority,
+    required this.rxNumber,
+    required this.sortOrder,
+  });
+
+  final String id;
+  final String orderNumber;
+  final String patientName;
+  final String patientPhone;
+  final String deliveryAddress;
+  final double? deliveryLatitude;
+  final double? deliveryLongitude;
+  final String deliveryNotes;
+  final String pharmacyName;
+  final String pharmacyAddress;
+  final String pharmacyPhone;
+  final double? pharmacyLatitude;
+  final double? pharmacyLongitude;
+  final String status;
+  final String statusLabel;
+  final String pickupWindowLabel;
+  final String handlingType;
+  final double copayAmount;
+  final bool priority;
+  final String? rxNumber;
+  final int sortOrder;
+
+  factory UnacceptedOrder.fromJson(Map<String, dynamic> json) {
+    return UnacceptedOrder(
+      id: json['id']?.toString() ?? '',
+      orderNumber: json['orderNumber']?.toString() ?? '',
+      patientName: json['patientName']?.toString() ?? '',
+      patientPhone: json['patientPhone']?.toString() ?? '',
+      deliveryAddress: json['deliveryAddress']?.toString() ?? '',
+      deliveryLatitude: (json['deliveryLatitude'] as num?)?.toDouble(),
+      deliveryLongitude: (json['deliveryLongitude'] as num?)?.toDouble(),
+      deliveryNotes: json['deliveryNotes']?.toString() ?? '',
+      pharmacyName: json['pharmacyName']?.toString() ?? '',
+      pharmacyAddress: json['pharmacyAddress']?.toString() ?? '',
+      pharmacyPhone: json['pharmacyPhone']?.toString() ?? '',
+      pharmacyLatitude: (json['pharmacyLatitude'] as num?)?.toDouble(),
+      pharmacyLongitude: (json['pharmacyLongitude'] as num?)?.toDouble(),
+      status: json['status']?.toString() ?? '',
+      statusLabel: json['statusLabel']?.toString() ?? '',
+      pickupWindowLabel: json['pickupWindowLabel']?.toString() ?? '',
+      handlingType: json['handlingType']?.toString() ?? '',
+      copayAmount: (json['copayAmount'] as num?)?.toDouble() ?? 0,
+      priority: json['priority'] == true,
+      rxNumber: json['rxNumber']?.toString(),
+      sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
+    );
+  }
+}

@@ -30,6 +30,10 @@ class TodayRouteState {
     this.isPickupLoading = false,
     this.activePickupOrderId,
     this.pickupErrorMessage,
+    // ── unaccepted orders ──
+    this.unacceptedOrders = const [],
+    this.isAccepting = false,
+    this.acceptErrorMessage,
   });
 
   // ── Availability ─────────────────────────────────────────
@@ -59,12 +63,24 @@ class TodayRouteState {
   /// Last pickup error message, surfaced to the screen as a SnackBar.
   final String? pickupErrorMessage;
 
+  // ── Unaccepted orders ─────────────────────────────────────
+  /// Orders assigned to the driver that are still awaiting acceptance.
+  /// When non-empty, the screen shows these instead of today's route.
+  final List<UnacceptedOrder> unacceptedOrders;
+
+  /// True while the bulk accept-orders API call is in flight.
+  final bool isAccepting;
+
+  /// Last accept-order error message, surfaced to the screen as a SnackBar.
+  final String? acceptErrorMessage;
+
   // ── Convenience getters ──────────────────────────────────
   bool get isLoading => loadStatus == RouteLoadStatus.loading;
   bool get isLoaded => loadStatus == RouteLoadStatus.loaded;
   bool get isError => loadStatus == RouteLoadStatus.error;
   bool get isRouteActive => startStatus == RouteStartStatus.active;
   bool get isRouteCompleted => startStatus == RouteStartStatus.completed;
+  bool get hasUnacceptedOrders => unacceptedOrders.isNotEmpty;
 
   int get completedStops =>
       route?.stops.where((s) => s.status == StopStatus.completed).length ?? 0;
@@ -88,6 +104,11 @@ class TodayRouteState {
     bool clearActivePickup = false,
     String? pickupErrorMessage,
     bool clearPickupError = false,
+    // unaccepted orders
+    List<UnacceptedOrder>? unacceptedOrders,
+    bool? isAccepting,
+    String? acceptErrorMessage,
+    bool clearAcceptError = false,
   }) {
     return TodayRouteState(
       isAvailable: isAvailable ?? this.isAvailable,
@@ -107,6 +128,11 @@ class TodayRouteState {
       pickupErrorMessage: clearPickupError
           ? null
           : (pickupErrorMessage ?? this.pickupErrorMessage),
+      unacceptedOrders: unacceptedOrders ?? this.unacceptedOrders,
+      isAccepting: isAccepting ?? this.isAccepting,
+      acceptErrorMessage: clearAcceptError
+          ? null
+          : (acceptErrorMessage ?? this.acceptErrorMessage),
     );
   }
 }
@@ -155,7 +181,7 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
           );
           await loadRoute();
         } else {
-          // Driver turned OFF — clear all route data.
+          // Driver turned OFF — clear all route + unaccepted-order data.
           state = state.copyWith(
             isAvailable: false,
             isAvailabilityUpdating: false,
@@ -163,6 +189,9 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
             startStatus: RouteStartStatus.idle,
             clearRoute: true,
             clearError: true,
+            unacceptedOrders: const [],
+            isAccepting: false,
+            clearAcceptError: true,
           );
         }
 
@@ -177,10 +206,43 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
 
   // ── Route loading ─────────────────────────────────────────────────────────
 
+  /// Entry point called whenever the driver becomes available (or retries).
+  ///
+  /// Checks for unaccepted orders first:
+  /// - If any exist, they're shown instead of today's route and the route
+  ///   API is skipped until all of them are accepted.
+  /// - If none exist, today's route is loaded as before.
   Future<void> loadRoute() async {
     // Safety: never load when the driver is unavailable.
     if (!state.isAvailable) return;
 
+    state = state.copyWith(
+      loadStatus: RouteLoadStatus.loading,
+      clearError: true,
+    );
+
+    final unacceptedResult = await _repository.getUnacceptedOrders();
+
+    switch (unacceptedResult) {
+      case ApiSuccess(:final data):
+        if (data.isNotEmpty) {
+          state = state.copyWith(
+            loadStatus: RouteLoadStatus.loaded,
+            unacceptedOrders: data,
+          );
+          return;
+        }
+        // No unaccepted orders — fall through to today's route.
+        await _loadTodayRoute();
+      case ApiFailure(:final exception):
+        state = state.copyWith(
+          loadStatus: RouteLoadStatus.error,
+          errorMessage: exception.message,
+        );
+    }
+  }
+
+  Future<void> _loadTodayRoute() async {
     state = state.copyWith(
       loadStatus: RouteLoadStatus.loading,
       clearError: true,
@@ -198,6 +260,40 @@ class TodayRouteNotifier extends StateNotifier<TodayRouteState> {
         state = state.copyWith(
           loadStatus: RouteLoadStatus.error,
           errorMessage: exception.message,
+        );
+    }
+  }
+
+  // ── Accept order ──────────────────────────────────────────────────────────
+
+  /// Called when the driver swipes "Accept Order". Bulk-accepts every order
+  /// currently in [TodayRouteState.unacceptedOrders] in a single API call.
+  ///
+  /// On success, clears the unaccepted list and loads today's route.
+  Future<void> acceptAllUnacceptedOrders() async {
+    if (state.isAccepting) return;
+    if (state.unacceptedOrders.isEmpty) return;
+
+    final orderIds = state.unacceptedOrders.map((o) => o.id).toList();
+
+    state = state.copyWith(
+      isAccepting: true,
+      clearAcceptError: true,
+    );
+
+    final result = await _repository.acceptUnacceptedOrders(orderIds);
+
+    switch (result) {
+      case ApiSuccess():
+        state = state.copyWith(
+          isAccepting: false,
+          unacceptedOrders: const [],
+        );
+        await _loadTodayRoute();
+      case ApiFailure(:final exception):
+        state = state.copyWith(
+          isAccepting: false,
+          acceptErrorMessage: exception.message,
         );
     }
   }

@@ -5,7 +5,6 @@ import 'package:rxswift/features/route_details/route_detail_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/app_theme.dart';
-import '../route_map/screen/route_map_screen.dart';
 import '../today_route/model/route_model.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -93,7 +92,7 @@ class RouteDetailScreen extends ConsumerWidget {
     );
   }
 
-  // ── Navigate: open map screen ─────────────────────────────────
+  // ── Navigate: open Google Maps ──────────────────────────────────
 
   Future<void> _onNavigate(
       BuildContext context,
@@ -103,14 +102,17 @@ class RouteDetailScreen extends ConsumerWidget {
     if (ref.read(routeDetailProvider(stop.orderId)).isNavigating) return;
     notifier.setNavigating(true);
 
-    await Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const RouteMapScreen(),
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
-        transitionDuration: const Duration(milliseconds: 400),
-      ),
-    );
+    final opened = await notifier.openInGoogleMaps(stop);
+
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open Google Maps',
+              style: TextStyle(fontFamily: 'Poppins')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
 
     notifier.setNavigating(false);
   }
