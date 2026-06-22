@@ -6,8 +6,23 @@ import 'package:rxswift/features/today_route/route_map/screen/route_map_screen.d
 
 import '../../theme/app_theme.dart';
 import '../../widgets/app_progress_dialoug.dart';
+import '../auth/login_screen.dart';
+import '../auth/provider/auth_provider.dart';
 import '../route_details/route_detail_screen.dart';
 import 'model/route_model.dart';
+
+const _weekdayNames = [
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+];
+const _monthNames = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+];
+
+String _formatTodayLabel() {
+  final now = DateTime.now();
+  return '${_weekdayNames[now.weekday - 1]}, ${now.day} ${_monthNames[now.month - 1]}';
+}
 
 
 class TodayRouteScreen extends ConsumerWidget {
@@ -59,8 +74,8 @@ class TodayRouteScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Top bar: availability toggle ──────────────────
-              _TopBar(state: state, notifier: notifier),
+              // ── App bar: profile, notifications, availability ──
+              _HomeAppBar(state: state, notifier: notifier),
 
               // ── Page header ───────────────────────────────────
               if (state.isAvailable && state.isLoaded)
@@ -68,6 +83,7 @@ class TodayRouteScreen extends ConsumerWidget {
                   totalStops: state.hasUnacceptedOrders
                       ? state.unacceptedOrders.length
                       : (state.route?.totalStops ?? 0),
+                  completedStops: state.completedStops,
                 ),
 
               // ── Body ──────────────────────────────────────────
@@ -110,7 +126,10 @@ class TodayRouteScreen extends ConsumerWidget {
   Widget _buildBody(BuildContext context, TodayRouteState state,
       TodayRouteNotifier notifier, WidgetRef ref) {
     if (!state.isAvailable) {
-      return const _AvailabilityRequiredView(key: ValueKey('unavailable'));
+      return _AvailabilityRequiredView(
+        key: const ValueKey('unavailable'),
+        onRetry: notifier.refresh,
+      );
     }
     if (state.isLoading) {
       return const _LoadingView(key: ValueKey('loading'));
@@ -143,80 +162,266 @@ class TodayRouteScaffold extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Top Bar  (availability toggle, no title here)
+//  Home App Bar  (profile, greeting, notifications, availability)
 // ─────────────────────────────────────────────────────────────
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.state, required this.notifier});
+class _HomeAppBar extends ConsumerWidget {
+  const _HomeAppBar({required this.state, required this.notifier});
   final TodayRouteState state;
   final TodayRouteNotifier notifier;
 
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        title: const Text('Log out?',
+            style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700)),
+        content: const Text(
+          'You will need to sign in again to access your routes.',
+          style: TextStyle(fontFamily: 'Poppins', fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel',
+                style: TextStyle(fontFamily: 'Poppins', color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+            ),
+            child: const Text('Log out',
+                style: TextStyle(fontFamily: 'Poppins', color: Colors.white, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    await ref.read(authProvider.notifier).logout();
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const LoginScreen(),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
+        transitionDuration: const Duration(milliseconds: 350),
+      ),
+          (route) => false,
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isOn = state.isAvailable;
     final isUpdating = state.isAvailabilityUpdating;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0F1A1A1A),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Invisible spacer to balance layout
-          const SizedBox(width: 80),
-
-          // ── Availability toggle (centered) ────────────────────
           Row(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: isUpdating
-                    ? const SizedBox(
-                  key: ValueKey('spinner'),
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor:
-                    AlwaysStoppedAnimation(AppColors.primary),
+              // ── Profile avatar ──────────────────────────────────
+              InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: () => _logout(context, ref),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.teal],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                )
-                    : Text(
-                  key: ValueKey(isOn),
-                  isOn ? 'Available' : 'Offline',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isOn
-                        ? AppColors.primary
-                        : AppColors.textSecondary,
-                  ),
+                  child: const Icon(Icons.person_rounded,
+                      color: Colors.white, size: 24),
                 ),
               ),
-              Transform.scale(
-                scale: 0.85,
-                child: Switch.adaptive(
-                  value: isOn,
-                  onChanged: isUpdating ? null : notifier.toggleAvailability,
-                  activeColor: AppColors.primary,
-                  inactiveThumbColor: AppColors.textSecondary,
+              const SizedBox(width: 12),
+
+              // ── Greeting ─────────────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Welcome back',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      _formatTodayLabel(),
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+
+              // ── Notifications ────────────────────────────────────
+              _NotificationButton(),
             ],
           ),
 
-          // ── Right placeholder (notification bell or avatar) ───
-          Container(
-            width: 36,
-            height: 36,
+          const SizedBox(height: 16),
+
+          // ── Availability pill ───────────────────────────────────
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: isOn
+                  ? AppColors.success.withValues(alpha: 0.10)
+                  : AppColors.textSecondary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(
+                color: isOn
+                    ? AppColors.success.withValues(alpha: 0.25)
+                    : AppColors.border,
+              ),
+            ),
+            child: Row(
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: isUpdating
+                      ? const SizedBox(
+                    key: ValueKey('spinner'),
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                    ),
+                  )
+                      : Icon(
+                    key: ValueKey(isOn),
+                    isOn
+                        ? Icons.bolt_rounded
+                        : Icons.pause_circle_outline_rounded,
+                    size: 18,
+                    color: isOn ? AppColors.success : AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isOn ? "You're online" : "You're offline",
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isOn ? AppColors.successDark : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                Transform.scale(
+                  scale: 0.8,
+                  child: Switch.adaptive(
+                    value: isOn,
+                    onChanged: isUpdating ? null : notifier.toggleAvailability,
+                    activeThumbColor: AppColors.success,
+                    inactiveThumbColor: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Notification bell with badge
+// ─────────────────────────────────────────────────────────────
+
+class _NotificationButton extends StatelessWidget {
+  const _NotificationButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('No new notifications',
+                  style: TextStyle(fontFamily: 'Poppins')),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.background,
               shape: BoxShape.circle,
               border: Border.all(color: AppColors.border),
             ),
             child: const Icon(Icons.notifications_none_rounded,
                 size: 20, color: AppColors.textSecondary),
+          ),
+          Positioned(
+            top: 8,
+            right: 9,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: AppColors.danger,
+                shape: BoxShape.circle,
+              ),
+            ),
           ),
         ],
       ),
@@ -229,36 +434,75 @@ class _TopBar extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 
 class _PageHeader extends StatelessWidget {
-  const _PageHeader({required this.totalStops});
+  const _PageHeader({required this.totalStops, required this.completedStops});
   final int totalStops;
+  final int completedStops;
 
   @override
   Widget build(BuildContext context) {
+    final progress = totalStops == 0 ? 0.0 : (completedStops / totalStops).clamp(0.0, 1.0);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text(
-            'Tasks',
-            style: TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-              height: 1.1,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tasks',
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Today ($totalStops stops · $completedStops done)',
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            'Today ($totalStops)',
-            style: const TextStyle(
-              fontFamily: 'Poppins',
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
+          if (totalStops > 0)
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 4,
+                      backgroundColor: AppColors.border,
+                      valueColor: const AlwaysStoppedAnimation(AppColors.teal),
+                    ),
+                  ),
+                  Text(
+                    '${(progress * 100).round()}%',
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -270,7 +514,8 @@ class _PageHeader extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 
 class _AvailabilityRequiredView extends StatelessWidget {
-  const _AvailabilityRequiredView({super.key});
+  const _AvailabilityRequiredView({super.key, required this.onRetry});
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -280,24 +525,13 @@ class _AvailabilityRequiredView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.08),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.toggle_off_rounded,
-                size: 52,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 20),
+            const _OfflineIllustration(),
+            const SizedBox(height: 28),
             const Text(
               'You are currently offline',
               style: TextStyle(
                 fontFamily: 'Poppins',
-                fontSize: 17,
+                fontSize: 19,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
               ),
@@ -315,7 +549,165 @@ class _AvailabilityRequiredView extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 28),
+            _TryAgainButton(onTap: onRetry),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Offline illustration  (wifi bubble + floating accents)
+// ─────────────────────────────────────────────────────────────
+
+class _OfflineIllustration extends StatelessWidget {
+  const _OfflineIllustration();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 200,
+      height: 200,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Positioned(top: 8, left: 16, child: _FloatingDiamond(size: 14)),
+          const Positioned(top: 30, right: 10, child: _FloatingDiamond(size: 10)),
+          const Positioned(bottom: 36, left: 4, child: _FloatingDiamond(size: 10)),
+          const Positioned(bottom: 10, right: 30, child: _FloatingDiamond(size: 14)),
+
+          // Outer soft halo
+          Container(
+            width: 180,
+            height: 180,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.10),
+                  AppColors.primary.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+
+          // Inner circle
+          Container(
+            width: 130,
+            height: 130,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.14),
+                  AppColors.teal.withValues(alpha: 0.10),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: const Icon(
+              Icons.wifi_rounded,
+              size: 56,
+              color: AppColors.primary,
+            ),
+          ),
+
+          // "Offline" badge
+          Positioned(
+            bottom: 26,
+            right: 50,
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: AppColors.teal,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.surface, width: 3),
+              ),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FloatingDiamond extends StatelessWidget {
+  const _FloatingDiamond({required this.size});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: 0.785398, // 45°
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  "Try Again" pill button
+// ─────────────────────────────────────────────────────────────
+
+class _TryAgainButton extends StatelessWidget {
+  const _TryAgainButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.full),
+            gradient: const LinearGradient(
+              colors: [AppColors.primary, AppColors.teal],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.30),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.refresh_rounded, size: 18, color: Colors.white),
+              SizedBox(width: 8),
+              Text(
+                'Try Again',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -585,35 +977,48 @@ class _TaskCard extends StatelessWidget {
     final isInProgress = stop.status == StopStatus.inProgress;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(
                 color: isInProgress
-                    ? AppColors.teal.withOpacity(0.35)
-                    : AppColors.border.withOpacity(0.70),
+                    ? AppColors.teal.withValues(alpha: 0.35)
+                    : AppColors.border.withValues(alpha: 0.70),
                 width: isInProgress ? 1.2 : 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
+                  color: AppColors.textPrimary.withValues(alpha: 0.05),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              child: IntrinsicHeight(
+                child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Status accent bar ──────────────────────────
+                  Container(
+                    width: 4,
+                    color: _bubbleColor.withValues(alpha: isCompleted ? 0.35 : 1),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                 // ── Status bubble ─────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
@@ -745,7 +1150,13 @@ class _TaskCard extends StatelessWidget {
                   color:
                   isCompleted ? AppColors.textHint : AppColors.textSecondary,
                 ),
-              ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                ),
+              ),
             ),
           ),
         ),
