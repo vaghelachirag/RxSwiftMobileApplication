@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../widgets/qr_scanner_screen.dart';
 import '../theme/route_map_theme.dart';
 
 // ── Result returned to the caller ─────────────────────────────────────────
@@ -26,11 +27,13 @@ class PickupPhotoResult {
     required this.photoPath,
     required this.latitude,
     required this.longitude,
+    required this.qrCode,
   });
 
   final String photoPath;
   final double latitude;
   final double longitude;
+  final String qrCode;
 }
 
 // ── Public helper: show the sheet and await result ────────────────────────
@@ -62,7 +65,7 @@ Future<void> showPickupSuccess(BuildContext context) {
     barrierDismissible: false,
     barrierColor: RouteColors.teal.withOpacity(0.96),
     transitionDuration: const Duration(milliseconds: 250),
-    pageBuilder: (_, __, ___) => const PickupSuccessContent(),
+    pageBuilder: (_, _, _) => const PickupSuccessContent(),
   );
 }
 
@@ -133,6 +136,7 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
   double?  _latitude;
   double?  _longitude;
   double?  _accuracy;
+  String?  _qrCode;
 
   bool    _locationLoading = true;
   String? _locationError;
@@ -216,16 +220,31 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
     }
   }
 
+  // ── QR scan ────────────────────────────────────────────────────────────
+
+  Future<void> _scanQrCode() async {
+    final code = await scanQrCode(context);
+    if (code != null && code.isNotEmpty && mounted) {
+      setState(() => _qrCode = code);
+    }
+  }
+
   // ── Confirm ────────────────────────────────────────────────────────────
 
   void _confirm() {
-    if (_photoPath == null || _latitude == null || _longitude == null) return;
+    if (_photoPath == null ||
+        _latitude == null ||
+        _longitude == null ||
+        _qrCode == null) {
+      return;
+    }
     setState(() => _isConfirming = true);
     Navigator.of(context).pop(
       PickupPhotoResult(
         photoPath: _photoPath!,
         latitude:  _latitude!,
         longitude: _longitude!,
+        qrCode:    _qrCode!,
       ),
     );
   }
@@ -234,7 +253,9 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
 
   bool get _hasPhoto     => _photoPath != null;
   bool get _hasLocation  => _latitude != null && _longitude != null;
-  bool get _canConfirm   => _hasPhoto && _hasLocation && !_isConfirming;
+  bool get _hasQrCode    => _qrCode != null && _qrCode!.isNotEmpty;
+  bool get _canConfirm   =>
+      _hasPhoto && _hasLocation && _hasQrCode && !_isConfirming;
 
   String get _locationLabel {
     if (_locationLoading) return 'Getting location…';
@@ -340,6 +361,19 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
 
               const SizedBox(height: 12),
 
+              // ── QR code section ───────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _hasQrCode
+                    ? _QrCodeRow(
+                  code:     _qrCode!,
+                  onRescan: _scanQrCode,
+                )
+                    : _QrScanButton(onTap: _scanQrCode),
+              ),
+
+              const SizedBox(height: 12),
+
               // ── Location section ─────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -386,10 +420,12 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
                         const Icon(Icons.check_circle_outline_rounded, size: 18),
                         const SizedBox(width: 8),
                         Text(
-                          _hasPhoto && !_hasLocation
-                              ? 'Waiting for location…'
-                              : !_hasPhoto
+                          !_hasPhoto
                               ? 'Take photo first'
+                              : !_hasQrCode
+                              ? 'Scan QR code first'
+                              : !_hasLocation
+                              ? 'Waiting for location…'
                               : 'Confirm Pickup',
                           style: RouteText.button(Colors.white),
                         ),
@@ -519,6 +555,115 @@ class _PhotoPreview extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _QrScanButton extends StatelessWidget {
+  const _QrScanButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color:        RouteColors.background,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: RouteColors.cardBorder,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding:    const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: RouteColors.tealDark.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.qr_code_scanner_rounded,
+                color: RouteColors.tealDark,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Scan QR Code',
+                    style: RouteText.body(RouteColors.tealDark).copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    'Required for pickup confirmation',
+                    style: RouteText.body(RouteColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: RouteColors.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QrCodeRow extends StatelessWidget {
+  const _QrCodeRow({required this.code, required this.onRescan});
+  final String       code;
+  final VoidCallback onRescan;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding:    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color:        RouteColors.accentGreen.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: RouteColors.accentGreen.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.qr_code_2_rounded,
+            color: RouteColors.accentGreen,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              code,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:    RouteText.body(RouteColors.textPrimary),
+            ),
+          ),
+          GestureDetector(
+            onTap: onRescan,
+            child: Text(
+              'Rescan',
+              style: RouteText.body(RouteColors.tealDark).copyWith(
+                fontWeight:  FontWeight.w600,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

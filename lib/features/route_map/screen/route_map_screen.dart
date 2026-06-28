@@ -167,7 +167,7 @@ class _LoadedBody extends ConsumerWidget {
       barrierDismissible: false,
       barrierColor: RouteColors.teal.withOpacity(0.96),
       transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (_, __, ___) => const _PickupSuccessContent(),
+      pageBuilder: (_, _, _) => const _PickupSuccessContent(),
     );
   }
 

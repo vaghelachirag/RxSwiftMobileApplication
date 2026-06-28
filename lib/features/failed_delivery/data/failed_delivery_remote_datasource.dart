@@ -124,7 +124,7 @@ class FailedDeliveryRemoteDataSource {
       quality -= _qualityStep;
     } while (quality >= _minQuality);
 
-    return File(result!.path);
+    return File(result.path);
   }
 
   // ── Submit failed delivery ─────────────────────────────────────────────

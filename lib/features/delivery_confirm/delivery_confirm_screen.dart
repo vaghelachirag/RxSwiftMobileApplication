@@ -8,6 +8,8 @@ import '../../widgets/camera_capture_area.dart';
 import '../../widgets/instruction_card.dart';
 import '../../widgets/location_info_card.dart';
 import '../../widgets/order_summary_card.dart';
+import '../../widgets/qr_scan_card.dart';
+import '../../widgets/qr_scanner_screen.dart';
 import '../../widgets/upload_status_banner.dart';
 import '../route_map/theme/route_map_theme.dart';
 import 'domain/delivery_state.dart';
@@ -109,6 +111,16 @@ class DeliveryConfirmationScreen extends ConsumerWidget {
                       ),
                       if (state.hasPhoto) ...[
                         const SizedBox(height: RouteSpacing.lg),
+                        QrScanCard(
+                          state: state,
+                          onScan: () async {
+                            final code = await scanQrCode(context);
+                            if (code != null && code.isNotEmpty) {
+                              controller.setQrCode(code);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: RouteSpacing.lg),
                         LocationInfoCard(
                           state: state,
                           onRetryLocation: controller.retryLocation,
@@ -184,7 +196,11 @@ class _BottomActionBar extends StatelessWidget {
     final bool enabled = state.canComplete;
     return _BarWrapper(
       child: _PrimaryButton(
-        label: state.isUploading ? 'Uploading…' : 'Upload & Complete Delivery',
+        label: state.isUploading
+            ? 'Uploading…'
+            : !state.hasQrCode
+            ? 'Scan QR code to continue'
+            : 'Upload & Complete Delivery',
         icon:
         state.isUploading ? null : Icons.check_circle_outline_rounded,
         color: RouteColors.accentGreen,

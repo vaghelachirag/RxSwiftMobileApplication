@@ -143,6 +143,10 @@ class DeliveryController extends StateNotifier<DeliveryState> {
 
   Future<void> retakePhoto() => openCamera();
 
+  // ── QR scan ────────────────────────────────────────────────────────────────
+
+  void setQrCode(String code) => state = state.copyWith(qrCode: code);
+
   // ── Location retry ────────────────────────────────────────────────────────
 
   Future<void> retryLocation() async {

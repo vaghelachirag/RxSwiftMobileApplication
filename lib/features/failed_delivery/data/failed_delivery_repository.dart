@@ -13,13 +13,11 @@
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/network/api_result.dart';
 import 'failed_delivery_remote_datasource.dart';
-import '../domain/failed_delivery_state.dart';
 
 // ── Typed exceptions ──────────────────────────────────────────────────────
 // Kept identical to DeliveryRepository so the controller's catch blocks

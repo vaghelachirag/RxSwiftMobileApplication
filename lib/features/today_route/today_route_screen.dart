@@ -110,8 +110,8 @@ class TodayRouteScreen extends ConsumerWidget {
             if (context.mounted) {
               Navigator.of(context).push(
                 PageRouteBuilder(
-                  pageBuilder: (_, __, ___) => const RouteMapScreen(),
-                  transitionsBuilder: (_, anim, __, child) =>
+                  pageBuilder: (_, _, _) => const RouteMapScreen(),
+                  transitionsBuilder: (_, anim, _, child) =>
                       FadeTransition(opacity: anim, child: child),
                   transitionDuration: const Duration(milliseconds: 400),
                 ),
@@ -211,8 +211,8 @@ class _HomeAppBar extends ConsumerWidget {
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const LoginScreen(),
-        transitionsBuilder: (_, anim, __, child) =>
+        pageBuilder: (_, _, _) => const LoginScreen(),
+        transitionsBuilder: (_, anim, _, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 350),
       ),

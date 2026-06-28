@@ -8,7 +8,6 @@
 // Cached per (number,color,size) so repeated stops don't re-rasterize.
 // ============================================================================
 
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';

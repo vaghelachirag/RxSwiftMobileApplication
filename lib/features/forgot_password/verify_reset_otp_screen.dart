@@ -40,8 +40,12 @@ class _VerifyResetOtpScreenState
   @override
   void dispose() {
     _timer?.cancel();
-    for (final c in _otpControllers) c.dispose();
-    for (final f in _focusNodes) f.dispose();
+    for (final c in _otpControllers) {
+      c.dispose();
+    }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
     super.dispose();
   }
 
@@ -115,11 +119,11 @@ class _VerifyResetOtpScreenState
     if (!mounted) return;
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => ResetPasswordScreen(
+        pageBuilder: (_, _, _) => ResetPasswordScreen(
           email: widget.email,
           otp: _otp,
         ),
-        transitionsBuilder: (_, animation, __, child) =>
+        transitionsBuilder: (_, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),
         transitionDuration: const Duration(milliseconds: 350),
       ),
@@ -146,7 +150,9 @@ class _VerifyResetOtpScreenState
     if (_seconds > 0) return;
     // Re-trigger sendOtp through the same provider to keep state clean
     ref.read(forgotPasswordProvider.notifier).sendOtp(widget.email);
-    for (final c in _otpControllers) c.clear();
+    for (final c in _otpControllers) {
+      c.clear();
+    }
     FocusScope.of(context).requestFocus(_focusNodes[0]);
     _startTimer();
   }

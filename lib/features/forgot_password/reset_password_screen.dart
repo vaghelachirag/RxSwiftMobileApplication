@@ -124,8 +124,8 @@ class _ResetPasswordScreenState
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const LoginScreen(),
-            transitionsBuilder: (_, animation, __, child) =>
+            pageBuilder: (_, _, _) => const LoginScreen(),
+            transitionsBuilder: (_, animation, _, child) =>
                 FadeTransition(opacity: animation, child: child),
             transitionDuration: const Duration(milliseconds: 350),
           ),

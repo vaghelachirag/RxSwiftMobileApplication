@@ -74,6 +74,7 @@ class DeliveryState {
     this.locationWarning,
     this.errorMessage,
     this.uploadProgress = 0.0,
+    this.qrCode,
   });
 
   final DeliveryStatus status;
@@ -82,17 +83,20 @@ class DeliveryState {
   final String? locationWarning;
   final String? errorMessage;
   final double uploadProgress;
+  final String? qrCode;
 
   // ── Getters ───────────────────────────────────────────────────────────────
 
   bool get hasPhoto      => photoPath != null;
   bool get hasLocation   => location != null;   // ← used by LocationInfoCard
+  bool get hasQrCode     => qrCode != null && qrCode!.isNotEmpty;
   bool get isUploading   => status == DeliveryStatus.uploading;
   bool get isSuccess     => status == DeliveryStatus.uploadSuccess;
   bool get isOfflinePending => status == DeliveryStatus.offlinePendingUpload;
 
   bool get canComplete =>
       hasPhoto &&
+          hasQrCode &&
           status != DeliveryStatus.uploading &&
           status != DeliveryStatus.uploadSuccess;
 
@@ -105,6 +109,7 @@ class DeliveryState {
     String? locationWarning,
     String? errorMessage,
     double? uploadProgress,
+    String? qrCode,
     bool clearLocation = false,
     bool clearLocationWarning = false,
     bool clearError = false,
@@ -119,6 +124,7 @@ class DeliveryState {
       errorMessage:
       clearError ? null : (errorMessage ?? this.errorMessage),
       uploadProgress: uploadProgress ?? this.uploadProgress,
+      qrCode: qrCode ?? this.qrCode,
     );
   }
 }

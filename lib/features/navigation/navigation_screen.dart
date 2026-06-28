@@ -65,8 +65,8 @@ class _NavigationMapScreenState extends ConsumerState<NavigationMapScreen>
       if (next.isEnded && prev?.isEnded != true && mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const TodayRouteScaffold(),
-            transitionsBuilder: (_, anim, __, child) =>
+            pageBuilder: (_, _, _) => const TodayRouteScaffold(),
+            transitionsBuilder: (_, anim, _, child) =>
                 FadeTransition(opacity: anim, child: child),
             transitionDuration: const Duration(milliseconds: 350),
           ),

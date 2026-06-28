@@ -69,7 +69,7 @@ class LocationSyncRepository {
   /// Sync using an already-known [DriverPosition] from the live stream.
   /// Preferred over syncOnce() — avoids a redundant GPS read.
   Future<void> syncWithPosition(DriverPosition pos) async {
-    print("Api"+"Location Update");
+    print("Api""Location Update");
     try {
       final request = LocationSyncRequest(
         latitude: pos.latLng.latitude,

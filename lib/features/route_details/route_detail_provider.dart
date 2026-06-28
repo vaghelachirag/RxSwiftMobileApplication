@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/api_result.dart';
+import '../../service/location_service.dart';
+import '../navigation/provider/navigation_provider.dart' show locationServiceProvider;
 import '../today_route/model/route_model.dart';
 import 'data/route_detail_repository.dart';
 import 'model/order_detail_model.dart';
@@ -62,10 +64,11 @@ class RouteDetailState {
 // ─────────────────────────────────────────────────────────────
 
 class RouteDetailNotifier extends StateNotifier<RouteDetailState> {
-  RouteDetailNotifier(this._repository, this._orderId)
+  RouteDetailNotifier(this._repository, this._locationService, this._orderId)
       : super(const RouteDetailState());
 
   final RouteDetailRepository _repository;
+  final LocationService _locationService;
   final String _orderId;
 
   void setNavigating(bool value) =>
@@ -102,18 +105,36 @@ class RouteDetailNotifier extends StateNotifier<RouteDetailState> {
 
   // ── Maps ─────────────────────────────────────────────────────────────
 
-  /// Opens the stop in Google Maps. Uses coordinates when present, otherwise
-  /// falls back to a text address search.
+  /// Opens turn-by-turn navigation from the driver's current location to the
+  /// stop. Uses coordinates when present, otherwise falls back to a text
+  /// address search for the destination. `dir_action=navigate` makes Google
+  /// Maps start navigation immediately instead of just showing the route.
   Future<bool> openInGoogleMaps(RouteStop stop) async {
-    final Uri uri;
-    if (stop.hasCoordinates) {
-      uri = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=${stop.latitude},${stop.longitude}',
-      );
-    } else {
-      final q = Uri.encodeComponent(stop.address);
-      uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$q');
+    final destination = stop.hasCoordinates
+        ? '${stop.latitude},${stop.longitude}'
+        : Uri.encodeComponent(stop.address);
+
+    String? origin;
+    if (await _locationService.ensureLocationAvailable() ==
+        LocationCheckResult.ready) {
+      try {
+        final current = await _locationService.getCurrentLocation();
+        origin = '${current.latitude},${current.longitude}';
+      } catch (_) {
+        // Fall back to letting Google Maps pick the origin.
+      }
     }
+
+    final params = {
+      'api': '1',
+      'destination': destination,
+      'travelmode': 'driving',
+      'dir_action': 'navigate',
+      if (origin != null) 'origin': origin,
+    };
+    final query = params.entries.map((e) => '${e.key}=${e.value}').join('&');
+    final uri = Uri.parse('https://www.google.com/maps/dir/?$query');
+
     if (await canLaunchUrl(uri)) {
       return launchUrl(uri, mode: LaunchMode.externalApplication);
     }
@@ -129,6 +150,7 @@ final routeDetailProvider = StateNotifierProvider.family<
     RouteDetailNotifier, RouteDetailState, String>(
   (ref, orderId) => RouteDetailNotifier(
     ref.watch(routeDetailRepositoryProvider),
+    ref.watch(locationServiceProvider),
     orderId,
   )..fetchOrderDetail(),
 );

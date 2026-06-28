@@ -25,8 +25,8 @@ class MapProjection {
     final lngs = <double>[route.startLongitude];
     for (final s in route.stops) {
       if (s.hasCoordinates) {
-        lats.add(s.latitude!);
-        lngs.add(s.longitude!);
+        lats.add(s.latitude);
+        lngs.add(s.longitude);
       }
     }
     // Guard against a degenerate (single-point or empty) box.

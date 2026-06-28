@@ -45,6 +45,8 @@ dependencies:
 
   # Camera-only image capture
   image_picker: ^1.1.2
+  # QR code scanning
+  mobile_scanner: ^7.0.1
   # Stamp location text onto the photo + temp file storage
   image: ^4.2.0
   path_provider: ^2.1.4

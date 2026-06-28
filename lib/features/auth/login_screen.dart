@@ -139,8 +139,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   void _navigateToForgotPassword() {
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const ForgotPasswordScreen(),
-        transitionsBuilder: (_, animation, __, child) {
+        pageBuilder: (_, _, _) => const ForgotPasswordScreen(),
+        transitionsBuilder: (_, animation, _, child) {
           return FadeTransition(
             opacity: animation,
             child: child,
@@ -156,8 +156,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
-        pageBuilder: (_, __, ___) => const TodayRouteScaffold(),
-        transitionsBuilder: (_, animation, __, child) {
+        pageBuilder: (_, _, _) => const TodayRouteScaffold(),
+        transitionsBuilder: (_, animation, _, child) {
           return FadeTransition(
             opacity: animation,
             child: child,

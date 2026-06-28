@@ -121,8 +121,11 @@ final allPointsRouteProvider = FutureProvider.autoDispose
         distanceKm: 0,
         durationMinutes: 0,
       ));
-      if (combined.isNotEmpty) combined.add(to);
-      else combined.addAll([from, to]);
+      if (combined.isNotEmpty) {
+        combined.add(to);
+      } else {
+        combined.addAll([from, to]);
+      }
     }
   }
 
