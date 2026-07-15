@@ -57,4 +57,11 @@ class RouteApiConstants {
   /// Full URL: http://103.235.105.96:8086/api/driver/orders/{orderId}
   static String orderDetail(String orderId) => '/driver/orders/$orderId';
 
+  // ── Push notifications ────────────────────────────────────────────────
+
+  /// POST — register/update the driver's FCM device token.
+  /// Full URL: http://103.235.105.96:8086/api/driver/fcm-token
+  /// Body: { "fcmToken": "..." }
+  static const String fcmToken = '/driver/fcm-token';
+
 }

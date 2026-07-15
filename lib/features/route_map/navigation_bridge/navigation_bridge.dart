@@ -29,6 +29,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:rxswift/features/navigation/provider/navigation_provider.dart'
 as engine;
 import 'package:rxswift/model/navigation/navigation_model.dart' as engine_model;
+import 'package:rxswift/service/background_location_service.dart';
+import 'package:rxswift/features/today_route/route_map/provider/location_sync_provider.dart';
 
 import '../../today_route/model/route_model.dart' as api;
 
@@ -71,6 +73,8 @@ Override buildNavigationOverride(List<api.RouteStop> apiStops) {
         (ref) => engine.NavigationNotifier(
       ref.read(engine.locationServiceProvider),
       ref.read(engine.directionsServiceProvider),
+      ref.read(backgroundLocationServiceProvider),
+      ref.read(locationSyncRepositoryProvider),
       initialStops: navStops.isEmpty ? null : navStops,
     ),
   );

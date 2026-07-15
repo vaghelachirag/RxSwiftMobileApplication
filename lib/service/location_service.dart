@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -37,11 +38,28 @@ class LocationService {
     return LatLng(position.latitude, position.longitude);
   }
 
+  /// On iOS, background updates are enabled directly here: given "Always"
+  /// permission and the `UIBackgroundModes: location` Info.plist entry, this
+  /// keeps CoreLocation delivering updates (and keeps the app process alive)
+  /// while backgrounded — no extra plugin needed.
+  ///
+  /// Android has no equivalent single-isolate trick (backgrounding the
+  /// activity suspends the Dart isolate regardless of stream settings), so
+  /// background continuity there is handled separately by
+  /// [BackgroundLocationService], not by this stream.
   Stream<Position> liveLocationStream({int distanceFilterMeters = 10}) {
-    final settings = LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: distanceFilterMeters,
-    );
+    final LocationSettings settings = Platform.isIOS
+        ? AppleSettings(
+            accuracy: LocationAccuracy.bestForNavigation,
+            distanceFilter: distanceFilterMeters,
+            allowBackgroundLocationUpdates: true,
+            pauseLocationUpdatesAutomatically: false,
+            showBackgroundLocationIndicator: true,
+          )
+        : LocationSettings(
+            accuracy: LocationAccuracy.bestForNavigation,
+            distanceFilter: distanceFilterMeters,
+          );
     return Geolocator.getPositionStream(locationSettings: settings);
   }
 

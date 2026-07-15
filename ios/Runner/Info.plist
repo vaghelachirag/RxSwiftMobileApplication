@@ -5,9 +5,18 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-    <string>We need your location to navigate you to delivery customers.</string>
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>We need your location to navigate you to delivery customers.</string>
+	<string>Your location is used to navigate you to delivery customers and track your delivery route in real time.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Your location is used to navigate you to delivery customers and share your live position with dispatch, including while the app is in the background.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>We need camera access to take a delivery confirmation photo.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>remote-notification</string>
+	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -58,13 +67,6 @@
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
 	<key>UISupportedInterfaceOrientations</key>
-	<key>NSCameraUsageDescription</key>
-    <string>We need camera access to take a delivery confirmation photo.</string>
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Your location is used to track your delivery route in real time.</string>
-
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>Your location is used to track your delivery route in real time.</string>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>

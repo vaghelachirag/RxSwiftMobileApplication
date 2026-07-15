@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/features/auth/provider/auth_provider.dart';
 
+import '../../service/notification_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_dialougs.dart';
 import '../../widgets/app_progress_dialoug.dart';
@@ -113,6 +114,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
 
     if (next.isSuccess) {
+      ref.read(notificationServiceProvider).registerDeviceToken();
       _navigateToTodayRoute();
     }
   }

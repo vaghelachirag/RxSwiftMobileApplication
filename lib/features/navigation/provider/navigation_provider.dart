@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../model/navigation/navigation_model.dart';
+import '../../../service/background_location_service.dart';
 import '../../../service/directions_service.dart';
 import '../../../service/location_service.dart';
+import '../../today_route/route_map/provider/location_sync_provider.dart';
+import '../../today_route/route_map/repository/location_sync_repository.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  Service providers (overridable in tests)
@@ -67,7 +71,11 @@ const _demoStops = <NavigationStop>[
 // ─────────────────────────────────────────────────────────────
 
 class NavigationNotifier extends StateNotifier<NavigationState> {
-  NavigationNotifier(this._locationService, this._directionsService,
+  NavigationNotifier(
+      this._locationService,
+      this._directionsService,
+      this._backgroundLocationService,
+      this._locationSyncRepository,
       {List<NavigationStop>? initialStops})
       : super(NavigationState(
     stops: (initialStops ?? _demoStops)
@@ -84,9 +92,14 @@ class NavigationNotifier extends StateNotifier<NavigationState> {
 
   final LocationService _locationService;
   final DirectionsService _directionsService;
+  final BackgroundLocationService _backgroundLocationService;
+  final LocationSyncRepository _locationSyncRepository;
 
   StreamSubscription<Position>? _positionSub;
+  Timer? _iosBackgroundSyncTimer;
   DateTime _lastRouteRefresh = DateTime.fromMillisecondsSinceEpoch(0);
+
+  static const _iosBackgroundSyncInterval = Duration(minutes: 1);
 
 
   static const _refreshDistanceMeters = 150.0;
@@ -177,6 +190,7 @@ class NavigationNotifier extends StateNotifier<NavigationState> {
         distanceKm: 0,
       );
       _positionSub?.cancel();
+      _stopBackgroundLocationSync();
       return;
     }
 
@@ -197,6 +211,7 @@ class NavigationNotifier extends StateNotifier<NavigationState> {
   /// User explicitly ended the trip.
   Future<void> endTrip() async {
     _positionSub?.cancel();
+    _stopBackgroundLocationSync();
     state = state.copyWith(status: NavigationStatus.ended);
   }
 
@@ -266,6 +281,35 @@ class NavigationNotifier extends StateNotifier<NavigationState> {
         // Don't blow up the screen on transient GPS errors.
       },
     );
+    _startBackgroundLocationSync();
+  }
+
+  /// Keeps the backend updated with the driver's position for the rest of
+  /// the navigation session, including while the app is backgrounded.
+  /// Android: a persistent foreground-service isolate (survives the main
+  /// isolate being suspended). iOS: a periodic timer is enough because
+  /// LocationService's AppleSettings already keep the main isolate alive
+  /// in the background.
+  void _startBackgroundLocationSync() {
+    if (Platform.isAndroid) {
+      _backgroundLocationService.start();
+    } else if (Platform.isIOS) {
+      _iosBackgroundSyncTimer?.cancel();
+      _iosBackgroundSyncTimer = Timer.periodic(
+        _iosBackgroundSyncInterval,
+        (_) {
+          final loc = state.driverLocation;
+          print('[BackgroundLocation] ${DateTime.now()} lat: ${loc?.latitude}, lng: ${loc?.longitude}');
+          _locationSyncRepository.syncOnce();
+        },
+      );
+    }
+  }
+
+  void _stopBackgroundLocationSync() {
+    _iosBackgroundSyncTimer?.cancel();
+    _iosBackgroundSyncTimer = null;
+    _backgroundLocationService.stop();
   }
 
   void _onPositionUpdate(Position position) {
@@ -374,6 +418,7 @@ class NavigationNotifier extends StateNotifier<NavigationState> {
   @override
   void dispose() {
     _positionSub?.cancel();
+    _stopBackgroundLocationSync();
     state.mapController?.dispose();
     super.dispose();
   }
@@ -388,5 +433,7 @@ StateNotifierProvider.autoDispose<NavigationNotifier, NavigationState>(
       (ref) => NavigationNotifier(
     ref.read(locationServiceProvider),
     ref.read(directionsServiceProvider),
+    ref.read(backgroundLocationServiceProvider),
+    ref.read(locationSyncRepositoryProvider),
   ),
 );
