@@ -1,209 +1,207 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:video_player/video_player.dart';
 
-import '../../widgets/rxswift_logo.dart';
+import '../../core/services/auth_status_service.dart';
 import '../auth/login_screen.dart';
+import '../today_route/today_route_screen.dart';
+import 'splash_controller.dart';
 
-// ─────────────────────────────────────────────────────────────
-//  Design tokens — matched with LoginScreen
-// ─────────────────────────────────────────────────────────────
+/// Path to the bundled intro video. Must be listed under `flutter/assets`
+/// in pubspec.yaml.
+const String _kSplashVideoAsset = 'assets/videos/logo_intro.mp4';
 
-abstract class _C {
-  /// Brand teal
-  static const primary = Color(0xFF0AA99B);
+/// Background shown behind/before the video and in any letterboxed edges
+/// left by BoxFit.cover. Swap to Colors.white if the intro video has a
+/// white (rather than black) backdrop, so there's no color mismatch flash.
+const Color _kSplashBackground = Colors.black;
 
-  /// Page background (same as login)
-  static const bg = Color(0xFFF0F4F8);
-
-  /// Muted grey subtitles / hints
-  static const textMuted = Color(0xFF7A8BA0);
-
-  static const footer = TextStyle(
-    fontFamily: 'Poppins',
-    fontSize: 12,
-    fontWeight: FontWeight.w400,
-    color: textMuted,
-    letterSpacing: 0.5,
-  );
-}
-
-class SplashScreen extends StatefulWidget {
+/// Full-screen splash video that plays once on launch, then routes to
+/// [TodayRouteScreen] (logged in) or [LoginScreen] (not logged in).
+///
+/// All playback/lifecycle logic lives in [SplashController] — this widget
+/// only renders state and reacts to lifecycle callbacks.
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin {
-  // ── Animation controllers ──────────────────────────────────
-  late final AnimationController _logoController;
-  late final AnimationController _loaderController;
-  late final AnimationController _exitController;
+class _SplashScreenState extends ConsumerState<SplashScreen>
+    with WidgetsBindingObserver {
+  late final SplashController _controller;
 
-  // ── Animations ─────────────────────────────────────────────
-  late final Animation<double> _logoScale;
-  late final Animation<double> _logoFade;
-  late final Animation<double> _loaderFade;
-  late final Animation<double> _exitFade;
+  /// Guards against navigating more than once — e.g. the video-finished
+  /// callback and a stray lifecycle event both trying to push the next
+  /// screen.
+  bool _hasNavigated = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
-    // Light background → dark status-bar icons
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
+    // Video is full-bleed and dark by default; keep status bar icons light.
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
 
-    // Logo pop-in
-    _logoController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
+    _controller = SplashController(
+      assetPath: _kSplashVideoAsset,
+      onFinished: _handleFinished,
+    )..addListener(_onControllerChanged);
 
-    _logoScale = Tween<double>(begin: 0.6, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: Curves.elasticOut,
-      ),
-    );
-
-    _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: const Interval(
-          0.0,
-          0.5,
-          curve: Curves.easeIn,
-        ),
-      ),
-    );
-
-    // Loader fade-in
-    _loaderController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-
-    _loaderFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _loaderController,
-        curve: Curves.easeOut,
-      ),
-    );
-
-    // Exit fade-out
-    _exitController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-
-    _exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(
-        parent: _exitController,
-        curve: Curves.easeIn,
-      ),
-    );
-
-    _runSequence();
+    // Kick off asset load/playback immediately so there's no idle frame
+    // before the first video frame is ready.
+    _controller.initialize();
   }
 
-  Future<void> _runSequence() async {
-    // Step 1 — logo animates in
-    await Future.delayed(const Duration(milliseconds: 200));
-    await _logoController.forward();
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
 
-    // Step 2 — loader fades in
-    await Future.delayed(const Duration(milliseconds: 120));
-    await _loaderController.forward();
+  /// Called once by [SplashController] when the video finishes (or fails).
+  /// On error we skip straight to login; otherwise we resolve the login
+  /// state and route accordingly.
+  Future<void> _handleFinished({required bool hadError}) async {
+    if (hadError) {
+      _navigateTo(const LoginScreen());
+      return;
+    }
 
-    // Step 3 — hold for branding moment
-    await Future.delayed(const Duration(milliseconds: 1500));
-
-    // Step 4 — fade out, then push login
-    await _exitController.forward();
-
+    final isLoggedIn =
+        await ref.read(authStatusServiceProvider).isLoggedIn();
     if (!mounted) return;
+
+    _navigateTo(isLoggedIn ? const TodayRouteScaffold() : const LoginScreen());
+  }
+
+  void _navigateTo(Widget screen) {
+    if (_hasNavigated || !mounted) return;
+    _hasNavigated = true;
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (_, _, _) => const LoginScreen(),
+        pageBuilder: (_, _, _) => screen,
         transitionsBuilder: (_, animation, _, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
-        transitionDuration: const Duration(milliseconds: 350),
+        transitionDuration: const Duration(milliseconds: 400),
       ),
     );
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        _controller.pause();
+        break;
+      case AppLifecycleState.resumed:
+        _controller.resume();
+        break;
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  @override
   void dispose() {
-    _logoController.dispose();
-    _loaderController.dispose();
-    _exitController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.removeListener(_onControllerChanged);
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+    final video = _controller.videoController;
+    final isReady = _controller.isReady && video != null;
+
+    // PopScope(canPop: false) blocks the Android back button so the intro
+    // can't be dismissed/skipped.
+    return PopScope(
+      canPop: false,
       child: Scaffold(
-        backgroundColor: _C.bg,
-        body: FadeTransition(
-          opacity: _exitFade,
-          child: SafeArea(
-            child: Stack(
-              children: [
-
-                Positioned.fill(
-                  child: Center(
-                    child: ScaleTransition(
-                      scale: _logoScale,
-                      child: FadeTransition(
-                        opacity: _logoFade,
-                        child: const RxSwiftLogo(),
-                      ),
-                    ),
-                  ),
+        backgroundColor: _kSplashBackground,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (isReady) _CoverVideo(controller: video),
+            // Only shown once init has exceeded the 2s threshold, so fast
+            // loads never flash a spinner.
+            if (_controller.showLoader && !isReady)
+              const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
-
-                // ── Bottom loader + footer ─────────────────
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 32,
-                  child: FadeTransition(
-                    opacity: _loaderFade,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              _C.primary,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 14),
-                        Text(
-                          'Powered by RxSwift',
-                          style: _C.footer,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// Renders [controller]'s video scaled to fully cover the available space
+/// (no letterbox bars) while cropping the *minimum* amount necessary to do
+/// so, based on the video's true display aspect ratio.
+///
+/// Deliberately uses [VideoPlayerValue.aspectRatio] — which video_player
+/// normalizes for any rotation metadata on the source file — rather than
+/// the raw [VideoPlayerValue.size]. Reading raw pixel width/height directly
+/// can report the pre-rotation frame size for portrait-shot videos, which
+/// silently feeds the wrong ratio into the cover calculation and makes the
+/// crop look far more aggressive ("too zoomed in") than it needs to be.
+class _CoverVideo extends StatelessWidget {
+  const _CoverVideo({required this.controller});
+
+  final VideoPlayerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Actual on-screen box the video must fill, taken directly from
+        // the incoming layout constraints (equivalent to screen
+        // width/height here, since the parent Stack uses StackFit.expand).
+        final screenWidth = constraints.maxWidth;
+        final screenHeight = constraints.maxHeight;
+        final screenAspectRatio = screenWidth / screenHeight;
+        final videoAspectRatio = controller.value.aspectRatio;
+
+        double renderWidth;
+        double renderHeight;
+        if (screenAspectRatio > videoAspectRatio) {
+          // Screen is proportionally wider than the video: match width
+          // exactly, let height overflow — crops only top/bottom.
+          renderWidth = screenWidth;
+          renderHeight = renderWidth / videoAspectRatio;
+        } else {
+          // Screen is proportionally taller than the video: match height
+          // exactly, let width overflow — crops only left/right.
+          renderHeight = screenHeight;
+          renderWidth = renderHeight * videoAspectRatio;
+        }
+
+        return ClipRect(
+          child: OverflowBox(
+            maxWidth: renderWidth,
+            maxHeight: renderHeight,
+            child: SizedBox(
+              width: renderWidth,
+              height: renderHeight,
+              // IgnorePointer + no controls widget => no scrubbing,
+              // pausing, or tapping is possible.
+              child: IgnorePointer(
+                child: VideoPlayer(controller),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

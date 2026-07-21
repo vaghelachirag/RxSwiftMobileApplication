@@ -21,6 +21,16 @@ class AuthRemoteDatasource {
           LoginResponseModel.fromJson(json as Map<String, dynamic>),
     );
   }
+
+  /// The API's LogoutRequestDto requires a non-empty `refreshToken` so it
+  /// can revoke that specific token server-side.
+  Future<ApiResult<void>> logout({required String refreshToken}) {
+    return _dioClient.post<void>(
+      ApiConstants.logout,
+      data: {'refreshToken': refreshToken},
+      fromJson: (_) {},
+    );
+  }
 }
 
 // ── Provider ──────────────────────────────────────────────────

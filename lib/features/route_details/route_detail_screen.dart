@@ -5,6 +5,7 @@ import 'package:rxswift/features/route_details/route_detail_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/app_progress_dialoug.dart';
 import '../delivery_confirm/delivery_confirm_screen.dart';
 import '../today_route/model/route_model.dart';
 import '../today_route/provider/today_route_provider.dart';
@@ -88,7 +89,7 @@ class RouteDetailScreen extends ConsumerWidget {
     final detail = state.orderDetail;
 
     if (state.isLoading && detail == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppProgressLoader(message: 'Loading order details...');
     }
 
     if (state.isError && detail == null) {

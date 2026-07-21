@@ -1,6 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'rxswift_logo.dart';
+
+/// Source app icon, shared with the native launcher icon
+/// (see flutter_launcher_icons config in pubspec.yaml).
+const String _kAppIconAsset = 'assets/icon/app_icon.jpeg';
 
 abstract class AppProgressDialog {
   static void show(
@@ -289,9 +292,14 @@ class _BreathingLogoState extends State<_BreathingLogo>
         opacity: _opacity.value,
         child: Transform.scale(
           scale: _scale.value,
-          child: const SizedBox(
-            width: double.infinity,
-            child: RxSwiftLogo(),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Image.asset(
+              _kAppIconAsset,
+              width: 72,
+              height: 72,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ),

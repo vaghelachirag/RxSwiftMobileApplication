@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxswift/features/today_route/provider/today_route_provider.dart';
-import 'package:rxswift/features/today_route/route_map/screen/route_map_screen.dart';
 
+import '../../core/network/auth_repository_impl.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_progress_dialoug.dart';
 import '../auth/login_screen.dart';
-import '../auth/provider/auth_provider.dart';
 import '../route_details/route_detail_screen.dart';
 import 'model/route_model.dart';
 
@@ -96,29 +95,14 @@ class TodayRouteScreen extends ConsumerWidget {
             ],
           ),
         ),
-        bottomNavigationBar: !(state.isAvailable && state.isLoaded)
-            ? null
-            : state.hasUnacceptedOrders
+        bottomNavigationBar: (state.isAvailable &&
+                state.isLoaded &&
+                state.hasUnacceptedOrders)
             ? _AcceptOrderBottomBar(
-          state: state,
-          onAccept: notifier.acceptAllUnacceptedOrders,
-        )
-            : _BottomBar(
-          state: state,
-          onStart: () async {
-            await notifier.startRoute();
-            if (context.mounted) {
-              Navigator.of(context).push(
-                PageRouteBuilder(
-                  pageBuilder: (_, _, _) => const RouteMapScreen(),
-                  transitionsBuilder: (_, anim, _, child) =>
-                      FadeTransition(opacity: anim, child: child),
-                  transitionDuration: const Duration(milliseconds: 400),
-                ),
-              );
-            }
-          },
-        ),
+                state: state,
+                onAccept: notifier.acceptAllUnacceptedOrders,
+              )
+            : null,
       ),
     );
   }
@@ -207,7 +191,12 @@ class _HomeAppBar extends ConsumerWidget {
 
     if (confirmed != true || !context.mounted) return;
 
-    await ref.read(authProvider.notifier).logout();
+    // Call the repository directly rather than going through the
+    // login-form's `authProvider` (an autoDispose StateNotifier scoped to
+    // LoginScreen) — nothing here keeps that notifier alive, so it can get
+    // disposed mid-flight while this awaits the network call, throwing
+    // "Tried to use AuthNotifier after dispose was called."
+    await ref.read(authRepositoryProvider).logout();
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       PageRouteBuilder(
@@ -1219,85 +1208,6 @@ class _TypeChip extends StatelessWidget {
           fontSize: 10,
           fontWeight: FontWeight.w700,
           color: color,
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Bottom Bar  (Start Route)
-// ─────────────────────────────────────────────────────────────
-
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.state, required this.onStart});
-  final TodayRouteState state;
-  final VoidCallback onStart;
-
-  @override
-  Widget build(BuildContext context) {
-    final isStarting = state.startStatus == RouteStartStatus.starting;
-    final isActive = state.isRouteActive;
-    final isCompleted = state.isRouteCompleted;
-
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        12,
-        20,
-        MediaQuery.of(context).padding.bottom + 12,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
-      ),
-      child: SizedBox(
-        height: 52,
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: (isStarting || isCompleted) ? null : onStart,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isCompleted
-                ? AppColors.success
-                : isActive
-                ? AppColors.teal
-                : AppColors.primary,
-            disabledBackgroundColor: isCompleted
-                ? AppColors.success.withOpacity(0.70)
-                : AppColors.primary.withOpacity(0.55),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            elevation: 0,
-          ),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: isStarting
-                ? const SizedBox(
-              key: ValueKey('loader'),
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                valueColor: AlwaysStoppedAnimation(Colors.white),
-              ),
-            )
-                : Text(
-              isCompleted
-                  ? 'Route Completed!'
-                  : isActive
-                  ? 'Route In Progress'
-                  : 'Start Route',
-              key: ValueKey(state.startStatus),
-              style: const TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ),
         ),
       ),
     );

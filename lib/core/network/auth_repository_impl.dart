@@ -42,6 +42,15 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
+    // Best-effort server-side invalidation — must happen before clearing
+    // local storage so both the Authorization header and the refresh token
+    // it needs are still available. DioClient swallows network errors into
+    // ApiFailure, so a failed/offline call here can never block the user
+    // from logging out locally.
+    final refreshToken = await _tokenStorage.readRefreshToken();
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await _datasource.logout(refreshToken: refreshToken);
+    }
     await _tokenStorage.clearAll();
   }
 }
