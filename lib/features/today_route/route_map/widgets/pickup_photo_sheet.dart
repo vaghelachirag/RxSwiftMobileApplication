@@ -27,13 +27,13 @@ class PickupPhotoResult {
     required this.photoPath,
     required this.latitude,
     required this.longitude,
-    required this.qrCode,
+    this.qrCode,
   });
 
   final String photoPath;
   final double latitude;
   final double longitude;
-  final String qrCode;
+  final String? qrCode;
 }
 
 // ── Public helper: show the sheet and await result ────────────────────────
@@ -232,10 +232,7 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
   // ── Confirm ────────────────────────────────────────────────────────────
 
   void _confirm() {
-    if (_photoPath == null ||
-        _latitude == null ||
-        _longitude == null ||
-        _qrCode == null) {
+    if (_photoPath == null || _latitude == null || _longitude == null) {
       return;
     }
     setState(() => _isConfirming = true);
@@ -244,7 +241,7 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
         photoPath: _photoPath!,
         latitude:  _latitude!,
         longitude: _longitude!,
-        qrCode:    _qrCode!,
+        qrCode:    _qrCode,
       ),
     );
   }
@@ -255,7 +252,7 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
   bool get _hasLocation  => _latitude != null && _longitude != null;
   bool get _hasQrCode    => _qrCode != null && _qrCode!.isNotEmpty;
   bool get _canConfirm   =>
-      _hasPhoto && _hasLocation && _hasQrCode && !_isConfirming;
+      _hasPhoto && _hasLocation && !_isConfirming;
 
   String get _locationLabel {
     if (_locationLoading) return 'Getting location…';
@@ -422,8 +419,6 @@ class _PickupPhotoSheetState extends State<_PickupPhotoSheet> {
                         Text(
                           !_hasPhoto
                               ? 'Take photo first'
-                              : !_hasQrCode
-                              ? 'Scan QR code first'
                               : !_hasLocation
                               ? 'Waiting for location…'
                               : 'Confirm Pickup',
@@ -603,7 +598,7 @@ class _QrScanButton extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Required for pickup confirmation',
+                    'Optional',
                     style: RouteText.body(RouteColors.textSecondary),
                   ),
                 ],

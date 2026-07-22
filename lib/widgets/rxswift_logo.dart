@@ -3,7 +3,9 @@ import 'package:flutter/cupertino.dart';
 import '../theme/app_theme.dart';
 
 class RxSwiftLogo extends StatelessWidget {
-  const RxSwiftLogo({super.key});
+  const RxSwiftLogo({super.key, this.size = 88});
+
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -12,6 +14,16 @@ class RxSwiftLogo extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(size * 0.2),
+            child: Image.asset(
+              'assets/icon/app_icon.jpeg',
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(height: 10),
           RichText(
             textAlign: TextAlign.center,
             text: const TextSpan(
@@ -20,7 +32,7 @@ class RxSwiftLogo extends StatelessWidget {
                   text: 'Rx',
                   style: TextStyle(
                     fontFamily: 'Poppins',
-                    fontSize: 34,
+                    fontSize: 26,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textDark,
                   ),
@@ -29,7 +41,7 @@ class RxSwiftLogo extends StatelessWidget {
                   text: 'Swift',
                   style: TextStyle(
                     fontFamily: 'Poppins',
-                    fontSize: 34,
+                    fontSize: 26,
                     fontWeight: FontWeight.w700,
                     color: AppColors.logoAccent,
                   ),

@@ -452,13 +452,31 @@ class _PageHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Today ($totalStops stops · $completedStops done)',
+                  'Today ($totalStops routes)',
                   style: const TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: AppColors.textSecondary,
                   ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _StatChip(
+                      icon: Icons.route_rounded,
+                      label: 'Total routes',
+                      value: totalStops,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    _StatChip(
+                      icon: Icons.check_circle_rounded,
+                      label: 'Done',
+                      value: completedStops,
+                      color: AppColors.success,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -492,6 +510,62 @@ class _PageHeader extends StatelessWidget {
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Stat Chip  (e.g. "Total routes: 17" / "Done: 5")
+// ─────────────────────────────────────────────────────────────
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            '$value',
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
@@ -784,10 +858,40 @@ class _RouteBody extends ConsumerWidget {
     final route = state.route!;
     final stops = route.stops;
 
-    // Build a list of items: groups of stops by storeName (or patientName
-    // when there's no store). Each group shows a "X more tasks" separator
-    // between the first stop and the rest, mirroring the target design.
-    final List<_ListItem> items = _buildItems(stops);
+    // Split into three sections so "done", "running", and "upcoming" stops
+    // are never mixed together in the same visual group.
+    final running =
+        stops.where((s) => s.status == StopStatus.inProgress).toList();
+    final upcoming =
+        stops.where((s) => s.status == StopStatus.pending).toList();
+    final done = stops
+        .where((s) =>
+            s.status == StopStatus.completed || s.status == StopStatus.skipped)
+        .toList();
+
+    final List<_ListItem> items = [
+      if (running.isNotEmpty)
+        ..._buildSection(
+          label: 'Running',
+          icon: Icons.local_shipping_rounded,
+          color: AppColors.teal,
+          stops: running,
+        ),
+      if (upcoming.isNotEmpty)
+        ..._buildSection(
+          label: 'Upcoming',
+          icon: Icons.schedule_rounded,
+          color: AppColors.primary,
+          stops: upcoming,
+        ),
+      if (done.isNotEmpty)
+        ..._buildSection(
+          label: 'Done',
+          icon: Icons.check_circle_rounded,
+          color: AppColors.success,
+          stops: done,
+        ),
+    ];
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -795,6 +899,14 @@ class _RouteBody extends ConsumerWidget {
       itemBuilder: (context, index) {
         final item = items[index];
         switch (item) {
+          case _SectionHeaderItem(:final label, :final icon, :final color, :final count):
+            return _SectionHeader(
+              label: label,
+              icon: icon,
+              color: color,
+              count: count,
+              topSpacing: index == 0 ? 0 : 20,
+            );
           case _StopItem(:final stop, :final isFirst, :final isLast):
             return _TaskCard(
               stop: stop,
@@ -820,6 +932,18 @@ class _RouteBody extends ConsumerWidget {
         }
       },
     );
+  }
+
+  List<_ListItem> _buildSection({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required List<RouteStop> stops,
+  }) {
+    return [
+      _SectionHeaderItem(label: label, icon: icon, color: color, count: stops.length),
+      ..._buildItems(stops),
+    ];
   }
 
   List<_ListItem> _buildItems(List<RouteStop> stops) {
@@ -870,6 +994,19 @@ class _RouteBody extends ConsumerWidget {
 
 sealed class _ListItem {}
 
+class _SectionHeaderItem extends _ListItem {
+  _SectionHeaderItem({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.count,
+  });
+  final String label;
+  final IconData icon;
+  final Color color;
+  final int count;
+}
+
 class _StopItem extends _ListItem {
   _StopItem({required this.stop, required this.isFirst, required this.isLast});
   final RouteStop stop;
@@ -887,6 +1024,66 @@ class _StopGroup {
   _StopGroup({required this.key, required this.stops});
   final String key;
   final List<RouteStop> stops;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Section header  ("Running (1)" / "Upcoming (5)" / "Done (3)")
+// ─────────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.count,
+    required this.topSpacing,
+  });
+  final String label;
+  final IconData icon;
+  final Color color;
+  final int count;
+  final double topSpacing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(top: topSpacing, bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Divider(color: color.withValues(alpha: 0.20), thickness: 1)),
+        ],
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

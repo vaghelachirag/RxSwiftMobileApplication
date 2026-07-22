@@ -19,8 +19,8 @@ class CaptureLocation {
   final double latitude;
   final double longitude;
   final double accuracy; // metres
-  final String formattedAddress; // "lat, lon" fallback always populated
-  final String? address;         // human-readable street address if available
+  final String formattedAddress;
+  final String? address;
 
   /// "12.97163, 77.59369" — shown in LocationInfoCard as the coordinate line.
   String get coordinatesLabel =>

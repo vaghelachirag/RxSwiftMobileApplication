@@ -19,12 +19,7 @@ void main() async {
   ]);
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // Must be registered before runApp — handles messages that arrive while
-  // the app is backgrounded/terminated.
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
-  // Required one-time setup for the Android foreground-service location
-  // sync used during active navigation (see background_location_service.dart).
   BackgroundLocationService().initialize();
 
   runApp(
